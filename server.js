@@ -5,9 +5,18 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { listApprovedAssets } = require("./lib/asset-registry");
-const { getTokenPrice, getReferencePrice } = require("./lib/price-provider");
+const { getTokenPriceBySymbol, getReferencePrice } = require("./lib/price-provider");
 const { DEMO_FEED_ID } = require("./lib/pyth");
-const { calculate } = require("./lib/valuator");
+const {
+  TARGET_WEIGHTS_BPS,
+  HOLDINGS_UNITS,
+  calculateCurrentWeights,
+  calculateMarkNAV,
+  calculateReferenceNAV,
+  calculateDislocation,
+  calculateWeightDrift,
+  classifyStrategyState,
+} = require("./lib/rules");
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -37,14 +46,19 @@ function sendJson(res, obj) {
   res.end(JSON.stringify(obj));
 }
 
-// Builds the strategy snapshot. `demo` selects a labelled Pyth simulation:
-// fresh (default) | stale (45s-old Pyth update) | invalid-feed | missing.
+// Builds the strategy snapshot via the deterministic rules engine. `demo`
+// selects a labelled simulation: fresh (default) | stale (45s-old Pyth update)
+// | invalid-feed | missing | drift (OPENAI run-up) | paused.
 function buildStrategySnapshot(demo) {
   const now = Date.now();
-  const assets = listApprovedAssets().filter((a) => a.mint !== null);
-  const tokenPrices = assets.map((a) => getTokenPrice(a.mint, { nowMs: now }));
+  const priceOverride = demo === "drift" ? { OPENAI: 140.0 } : {};
+  const symbols = ["OPENAI", "ANTHROPIC", "XAI", "USDC"];
+  const tokenPrices = symbols.map((s) =>
+    getTokenPriceBySymbol(s, { nowMs: now, priceOverride: priceOverride[s] ?? null })
+  );
   let reference;
   let demoMode = null;
+  let paused = false;
   if (demo === "stale") {
     reference = getReferencePrice(DEMO_FEED_ID, {
       nowMs: now,
@@ -54,12 +68,47 @@ function buildStrategySnapshot(demo) {
   } else if (demo === "invalid-feed") {
     reference = getReferencePrice("NOT_A_FEED", { nowMs: now });
     demoMode = "DEMO_SIMULATION";
-  } else if (demo === "missing") {
+  } else if (demo === "drift" || demo === "paused") {
     reference = getReferencePrice(null, { nowMs: now });
+    demoMode = "DEMO_SIMULATION";
+    paused = demo === "paused";
   } else {
     reference = getReferencePrice(null, { nowMs: now });
   }
-  const valuation = calculate({ tokenPrices, reference });
+  const pricesBySymbol = {};
+  const valuesBySymbol = {};
+  for (const t of tokenPrices) {
+    pricesBySymbol[t.symbol] = t.price;
+    valuesBySymbol[t.symbol] = t.price * HOLDINGS_UNITS[t.symbol];
+  }
+  const markNAV = calculateMarkNAV(pricesBySymbol, HOLDINGS_UNITS);
+  const referenceNAV = calculateReferenceNAV();
+  const currentWeights = calculateCurrentWeights(valuesBySymbol, markNAV);
+  const classification = classifyStrategyState({
+    currentWeightsBps: currentWeights,
+    targetWeightsBps: TARGET_WEIGHTS_BPS,
+    tokenPrices,
+    reference,
+    paused,
+    markNAV,
+    referenceNAV,
+  });
+  const drift = calculateWeightDrift(currentWeights, TARGET_WEIGHTS_BPS);
+  const valuation = {
+    markNAV,
+    referenceNAV,
+    premiumDiscount: calculateDislocation(markNAV, referenceNAV),
+    dataFreshness: classification.dataQuality === "REFERENCE_UNKNOWN" ? "REFERENCE_UNKNOWN" : classification.dataQuality,
+    dataConfidence: "FIXTURE",
+    state: classification.state,
+    reasonCodes: classification.reasonCodes,
+    currentWeights,
+    targetWeights: TARGET_WEIGHTS_BPS,
+    maxDriftBps: drift.maxDriftBps,
+    proposalAllowed: classification.proposalAllowed,
+    executionAllowed: false,
+    requiresApproval: true,
+  };
   return {
     dataMode: "FIXTURE",
     demoMode,
@@ -74,7 +123,7 @@ const server = http.createServer((req, res) => {
   const query = new URLSearchParams(queryString || "");
   if (urlPath === "/health") {
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ status: "ok", service: "stockweave", phase: 2 }));
+    res.end(JSON.stringify({ status: "ok", service: "stockweave", phase: 3 }));
     return;
   }
   if (urlPath === "/api/assets") {
@@ -106,7 +155,7 @@ const server = http.createServer((req, res) => {
 
 if (require.main === module) {
   server.listen(PORT, () => {
-    console.log(`StockWeave Phase 2 listening on http://localhost:${PORT}`);
+    console.log(`StockWeave Phase 3 listening on http://localhost:${PORT}`);
   });
 }
 

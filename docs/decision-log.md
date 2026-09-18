@@ -1,5 +1,11 @@
 # StockWeave Decision Log
 
+## Phase 3 (2026-09-18)
+
+- D-301: Rules engine in `lib/rules.js` (10 functions, bps weights, pure/deterministic). Fixture holdings resized to 3/6/12/100 units so fixture prices land exactly on 30/30/30/10 targets (fresh = NORMAL, drift 0). Supersedes D-203 in one respect: XAI gets a FIXTURE-labelled, mint-null snapshot for rules completeness — still unverified, never on-chain.
+- D-302: State precedence PAUSED > STALE_DATA > DISLOCATED > DRIFTED > NORMAL; breaches surface as DRIFTED reason codes; stale/invalid blocks proposals; notional breach blocks proposals via reason code.
+- D-303: `/api/strategy` now serves rules-engine valuations (+`?demo=drift|paused`, labelled `DEMO_SIMULATION`); response keeps Phase 2 shape with added `reasonCodes/currentWeights/targetWeights/maxDriftBps`.
+
 ## Phase 2 (2026-09-18)
 
 - D-201: Adapters live server-side in `lib/` with JSON endpoints `/api/assets` + `/api/strategy`. Token prices FIXTURE-labelled; reference UNKNOWN (no verified public Pyth feed for pre-IPO mints — never fabricated).
