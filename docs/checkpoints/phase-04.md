@@ -1,6 +1,6 @@
 # Phase 04 Checkpoint
 
-Status: BLOCKED
+Status: PARTIAL — program deployed + verified, test evidence pending
 
 ## Objective
 
@@ -23,12 +23,24 @@ Move the strategy's critical identity, assets, rules, and status on-chain: 6 ins
 ## Evidence
 
 - command or URL: `npm test` (mirror only); Playground runbook `docs/solana-playground-phase04.md`
-- artifact or transaction: NONE on-chain — program ID: UNASSIGNED; build output: PENDING; tx signatures: PENDING
-- screenshot or recording: none
+- artifact or transaction:
+  - Program ID (Devnet, user-deployed via Playground, agent-verified 2026-09-19
+    with read-only `getAccountInfo`): `2z9QVsHonA4QcZkwLAcb1P5BGyrTL9UYUrE45TrmqC2a`
+    — lamports 833120, owner `BPFLoaderUpgradeab1e11111111111111111111111`,
+    executable=true.
+  - Recorded in `programs/stockweave/src/lib.rs` (`declare_id!`) and
+    `Anchor.toml` (`[programs.devnet]`).
+  - Anchor test output (5/5): PENDING — user to paste from Playground.
+  - Instruction signatures (initialize/permission/pause/revoke): PENDING.
+- screenshot or recording: one Devnet explorer success screenshot + raw-tx hex
+  received; signature transcription from image failed (89 chars, invalid) —
+  exact signature text still needed if tx-level evidence is required.
 
 ## Known failures
 
-- On-chain evidence items are missing, not failed: build, network tests, deploy, and tx signatures all await the Playground run. Mirror PASS is explicitly not on-chain evidence.
+- Anchor test evidence (5/5 green + instruction signatures) still missing.
+  Build is proven (deploy succeeded), but the rejection-path tests
+  (unauthorized / paused / revoke) are unverified on-chain.
 
 ## Risks
 
@@ -41,8 +53,10 @@ Move the strategy's critical identity, assets, rules, and status on-chain: 6 ins
 
 ## Decision
 
-Proceed to next phase: NO — phase is BLOCKED on the Playground run
+Proceed to next phase: NO — awaiting Anchor test output (5/5 + signatures)
 
 ## Next action
 
-USER: follow `docs/solana-playground-phase04.md` (build → test → deploy on Devnet) and paste back program ID + test output + signatures. Agent will then record them here and flip Phase 4 to PASS. Do NOT approve Phase 5 until then.
+USER: in Playground, click Test and paste the full output (PASS/FAIL lines +
+logged signatures). Agent records them here and flips Phase 4 to PASS.
+Do NOT approve Phase 5 until then.

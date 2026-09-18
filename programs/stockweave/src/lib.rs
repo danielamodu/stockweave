@@ -4,15 +4,15 @@
 //! services may propose actions but can never bypass these guards.
 //! Proposal + approval instructions arrive in Phase 5.
 //!
-//! DEPLOY NOTE: the `declare_id!` below is a compile-only placeholder.
-//! Solana Playground generates the real keypair on deploy and patches this
-//! value. No program ID is claimed until the Playground deploy step in
-//! docs/solana-playground-phase04.md is run.
+//! DEPLOYED: Devnet program 2z9QVsHonA4QcZkwLAcb1P5BGyrTL9UYUrE45TrmqC2a,
+//! verified on-chain 2026-09-19 (executable, BPF upgradeable loader).
 
 use anchor_lang::prelude::*;
 
-// Compile-only placeholder. Replaced by the Playground-generated keypair.
-declare_id!("11111111111111111111111111111111");
+// Deployed on Devnet via Solana Playground; verified on-chain 2026-09-19
+// (owner BPFLoaderUpgradeab1e11111111111111111111111, executable=true).
+// This address is the program's identity — do not change it.
+declare_id!("2z9QVsHonA4QcZkwLAcb1P5BGyrTL9UYUrE45TrmqC2a");
 
 #[program]
 pub mod stockweave {

@@ -1,12 +1,13 @@
 # StockWeave Anchor workspace (source of truth for browser Playground runs).
-# NOTE: program IDs are assigned inside Solana Playground on deploy
-# (Playground generates the keypair and patches declare_id! + Anchor.toml).
-# Do NOT invent a program ID here — see docs/solana-playground-phase04.md.
+# Program ID verified on Devnet 2026-09-19 (executable, BPF upgradeable loader).
 # No Solana toolchain is required on the local PC.
 
 [features]
 seeds = false
 skip-lint = false
+
+[programs.devnet]
+stockweave = "2z9QVsHonA4QcZkwLAcb1P5BGyrTL9UYUrE45TrmqC2a"
 
 [registry]
 url = "https://api.apr-1.dev"
