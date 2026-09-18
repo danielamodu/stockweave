@@ -77,6 +77,55 @@
   <h2>Fork</h2>
   <p><button type="button" disabled title="Forking opens in Phase 7">Fork strategy (coming in Phase 7)</button></p>
 
+  <h2>Valuation — Pyth-aware</h2>
+  <p><small>Token prices (left) come from the price adapter with source and timestamp. Reference prices (right) come from Pyth where a verified feed exists — currently <code>UNKNOWN</code>, never estimated. Demo simulations are labelled and never presented as live market data.</small></p>
+  <div class="grid">
+    <div class="card">
+      <h2>Token prices</h2>
+      <div id="token-prices" role="status">Loading token prices…</div>
+    </div>
+    <div class="card">
+      <h2>Reference prices (Pyth)</h2>
+      <div id="reference-prices" role="status">Loading reference prices…</div>
+    </div>
+  </div>
+  <p>Valuation: <span id="valuation">Loading valuation…</span></p>
+  <p><small>Simulations (labelled <code>DEMO_SIMULATION</code>):
+    <a href="/strategy/ai-infrastructure?demo=stale">stale-data</a> ·
+    <a href="/strategy/ai-infrastructure?demo=invalid-feed">invalid-feed</a> ·
+    <a href="/strategy/ai-infrastructure?demo=missing">missing-reference</a> ·
+    <a href="/strategy/ai-infrastructure">fresh</a></small></p>
+  <script>
+    (function () {
+      function fmtTime(ms) { return ms === null ? "n/a" : new Date(ms).toISOString(); }
+      function row(label, snap) {
+        return "<li>" + label + ": " +
+          (snap.price === null ? "UNKNOWN" : "$" + snap.price) +
+          " · source " + snap.source +
+          " · published " + fmtTime(snap.publishTimeMs) +
+          " · age " + (snap.ageSeconds === null ? "n/a" : snap.ageSeconds + "s") +
+          " · " + snap.validity + "</li>";
+      }
+      var params = new URLSearchParams(window.location.search);
+      var demo = params.get("demo") || "fresh";
+      fetch("/api/strategy?demo=" + encodeURIComponent(demo)).then(function (r) { return r.json(); }).then(function (s) {
+        document.getElementById("token-prices").innerHTML =
+          "<ul>" + s.tokenPrices.map(function (t) { return row(t.symbol, t); }).join("") + "</ul>";
+        var ref = s.reference;
+        document.getElementById("reference-prices").innerHTML =
+          "<ul>" + row(ref.feedId || "no verified feed", ref) + "</ul>" +
+          (s.demoMode ? "<p><strong>" + s.demoMode + ":</strong> simulated Pyth condition, not live market data.</p>" : "");
+        var v = s.valuation;
+        document.getElementById("valuation").textContent =
+          "Mark NAV $" + v.markNAV + " · Reference NAV " + (v.referenceNAV === null ? "UNKNOWN" : "$" + v.referenceNAV) +
+          " · Premium/discount " + v.premiumDiscount + " · State " + v.state +
+          " · Proposals " + (v.proposalAllowed ? "allowed" : "blocked");
+      }).catch(function () {
+        document.getElementById("valuation").textContent = "Could not load valuation data. Check your connection and retry.";
+      });
+    })();
+  </script>
+
   <div class="demo-states">
     <h2>Page states</h2>
     <p>

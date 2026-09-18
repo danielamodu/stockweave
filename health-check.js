@@ -1,4 +1,4 @@
-// Phase 0 health check — verifies baseline files exist. No Solana tooling required.
+// Phase 2 health check — verifies baseline files exist. No Solana tooling required.
 const fs = require("fs");
 const path = require("path");
 
@@ -11,6 +11,13 @@ const required = [
   "docs/product-contract.md",
   "docs/decision-log.md",
   "tests/run.js",
+  "tests/phase01.js",
+  "tests/phase02.js",
+  "lib/asset-registry.js",
+  "lib/pyth.js",
+  "lib/price-provider.js",
+  "lib/valuator.js",
+  "public/strategy/ai-infrastructure/index.html",
 ];
 
 const missing = required.filter((f) => !fs.existsSync(path.join(ROOT, f)));
@@ -18,7 +25,7 @@ const missing = required.filter((f) => !fs.existsSync(path.join(ROOT, f)));
 const result = {
   status: missing.length === 0 ? "ok" : "fail",
   service: "stockweave",
-  phase: 1,
+  phase: 2,
   missing,
   timestamp: new Date().toISOString(),
 };

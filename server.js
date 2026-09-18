@@ -1,8 +1,13 @@
-// Phase 1 strategy page server — zero dependencies.
-// Serves static pages from public/, including /strategy/ai-infrastructure.
+// Phase 2 data-adapter server — zero dependencies.
+// Serves static pages from public/ plus JSON adapter endpoints:
+//   GET /api/assets, GET /api/strategy[?demo=fresh|stale|invalid-feed|missing]
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { listApprovedAssets } = require("./lib/asset-registry");
+const { getTokenPrice, getReferencePrice } = require("./lib/price-provider");
+const { DEMO_FEED_ID } = require("./lib/pyth");
+const { calculate } = require("./lib/valuator");
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -27,11 +32,57 @@ function serveFile(res, filePath) {
   });
 }
 
+function sendJson(res, obj) {
+  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(obj));
+}
+
+// Builds the strategy snapshot. `demo` selects a labelled Pyth simulation:
+// fresh (default) | stale (45s-old Pyth update) | invalid-feed | missing.
+function buildStrategySnapshot(demo) {
+  const now = Date.now();
+  const assets = listApprovedAssets().filter((a) => a.mint !== null);
+  const tokenPrices = assets.map((a) => getTokenPrice(a.mint, { nowMs: now }));
+  let reference;
+  let demoMode = null;
+  if (demo === "stale") {
+    reference = getReferencePrice(DEMO_FEED_ID, {
+      nowMs: now,
+      publishTimeMs: now - 45000,
+    });
+    demoMode = "DEMO_SIMULATION";
+  } else if (demo === "invalid-feed") {
+    reference = getReferencePrice("NOT_A_FEED", { nowMs: now });
+    demoMode = "DEMO_SIMULATION";
+  } else if (demo === "missing") {
+    reference = getReferencePrice(null, { nowMs: now });
+  } else {
+    reference = getReferencePrice(null, { nowMs: now });
+  }
+  const valuation = calculate({ tokenPrices, reference });
+  return {
+    dataMode: "FIXTURE",
+    demoMode,
+    tokenPrices,
+    reference,
+    valuation,
+  };
+}
+
 const server = http.createServer((req, res) => {
-  const urlPath = req.url.split("?")[0];
+  const [urlPath, queryString] = req.url.split("?");
+  const query = new URLSearchParams(queryString || "");
   if (urlPath === "/health") {
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ status: "ok", service: "stockweave", phase: 1 }));
+    res.end(JSON.stringify({ status: "ok", service: "stockweave", phase: 2 }));
+    return;
+  }
+  if (urlPath === "/api/assets") {
+    sendJson(res, { dataMode: "FIXTURE", assets: listApprovedAssets() });
+    return;
+  }
+  if (urlPath === "/api/strategy") {
+    sendJson(res, buildStrategySnapshot(query.get("demo") || "fresh"));
     return;
   }
   const rel = urlPath === "/" ? "/index.html" : urlPath;
@@ -55,7 +106,7 @@ const server = http.createServer((req, res) => {
 
 if (require.main === module) {
   server.listen(PORT, () => {
-    console.log(`StockWeave Phase 1 listening on http://localhost:${PORT}`);
+    console.log(`StockWeave Phase 2 listening on http://localhost:${PORT}`);
   });
 }
 
