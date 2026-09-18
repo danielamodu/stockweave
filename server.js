@@ -123,7 +123,7 @@ const server = http.createServer((req, res) => {
   const query = new URLSearchParams(queryString || "");
   if (urlPath === "/health") {
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ status: "ok", service: "stockweave", phase: 3 }));
+    res.end(JSON.stringify({ status: "ok", service: "stockweave", phase: 4 }));
     return;
   }
   if (urlPath === "/api/assets") {
@@ -155,7 +155,7 @@ const server = http.createServer((req, res) => {
 
 if (require.main === module) {
   server.listen(PORT, () => {
-    console.log(`StockWeave Phase 3 listening on http://localhost:${PORT}`);
+    console.log(`StockWeave Phase 4 listening on http://localhost:${PORT}`);
   });
 }
 

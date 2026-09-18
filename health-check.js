@@ -1,4 +1,4 @@
-// Phase 3 health check — verifies baseline files exist. No Solana tooling required.
+// Phase 4 health check — verifies baseline files exist. No Solana tooling required.
 const fs = require("fs");
 const path = require("path");
 
@@ -14,8 +14,15 @@ const required = [
   "tests/phase01.js",
   "tests/phase02.js",
   "tests/phase03.js",
+  "tests/phase04.js",
+  "programs/stockweave/src/lib.rs",
+  "programs/stockweave/Cargo.toml",
+  "Anchor.toml",
+  "tests/stockweave.ts",
+  "docs/solana-playground-phase04.md",
   "lib/asset-registry.js",
   "lib/pyth.js",
+  "lib/onchain-mirror.js",
   "lib/price-provider.js",
   "lib/rules.js",
   "lib/valuator.js",
@@ -27,7 +34,7 @@ const missing = required.filter((f) => !fs.existsSync(path.join(ROOT, f)));
 const result = {
   status: missing.length === 0 ? "ok" : "fail",
   service: "stockweave",
-  phase: 3,
+  phase: 4,
   missing,
   timestamp: new Date().toISOString(),
 };

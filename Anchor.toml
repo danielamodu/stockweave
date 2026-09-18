@@ -1,0 +1,19 @@
+# StockWeave Anchor workspace (source of truth for browser Playground runs).
+# NOTE: program IDs are assigned inside Solana Playground on deploy
+# (Playground generates the keypair and patches declare_id! + Anchor.toml).
+# Do NOT invent a program ID here — see docs/solana-playground-phase04.md.
+# No Solana toolchain is required on the local PC.
+
+[features]
+seeds = false
+skip-lint = false
+
+[registry]
+url = "https://api.apr-1.dev"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"

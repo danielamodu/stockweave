@@ -1,5 +1,11 @@
 # StockWeave Decision Log
 
+## Phase 4 (2026-09-18)
+
+- D-401: Anchor program source (`programs/stockweave/src/lib.rs`) is repo source of truth: 6 instructions, 4 PDA types, 5 events, authority/pause guards, `declare_id!` left as compile-only placeholder — no program ID claimed until Playground deploy.
+- D-402: Local verification via labelled off-chain mirror (`lib/onchain-mirror.js`, SIMULATED addresses) — explicitly NOT on-chain evidence. Rejected: installing Solana toolchain on PC (forbidden by project constraint).
+- D-403: Phase 4 marked BLOCKED, not PASS: build/test/deploy evidence requires the user's browser Playground run per `docs/solana-playground-phase04.md`. Mirror PASS does not satisfy the on-chain gate.
+
 ## Phase 3 (2026-09-18)
 
 - D-301: Rules engine in `lib/rules.js` (10 functions, bps weights, pure/deterministic). Fixture holdings resized to 3/6/12/100 units so fixture prices land exactly on 30/30/30/10 targets (fresh = NORMAL, drift 0). Supersedes D-203 in one respect: XAI gets a FIXTURE-labelled, mint-null snapshot for rules completeness — still unverified, never on-chain.

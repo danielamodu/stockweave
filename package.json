@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "health": "node health-check.js",
-    "test": "node tests/run.js && node tests/phase01.js && node tests/phase02.js && node tests/phase03.js"
+    "test": "node tests/run.js && node tests/phase01.js && node tests/phase02.js && node tests/phase03.js && node tests/phase04.js"
   },
   "engines": {
     "node": ">=18"

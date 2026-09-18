@@ -1,0 +1,39 @@
+# Solana Playground Runbook — Phase 4 (user operates the browser)
+
+Local PC has no Solana toolchain by project constraint, so this step runs in
+the browser. The Git repo stays source of truth: after the Playground run,
+copy back the program ID + build/test output into `docs/checkpoints/phase-04.md`.
+
+## Steps (~15 min, Devnet, no real funds)
+
+1. Open https://beta.solpg.io/ in the browser.
+2. Create a new Anchor project named `stockweave`.
+3. Replace `programs/stockweave/src/lib.rs` with the repo file
+   `programs/stockweave/src/lib.rs` (copy verbatim).
+4. Replace `tests/stockweave.ts` with the repo file `tests/stockweave.ts`.
+5. In the Playground terminal: `solana airdrop 2` (Devnet SOL for test fees).
+6. Click **Build** (or run `anchor build`). Expect success with no errors.
+7. Click **Test** (runs `anchor test` against Devnet). Expect 5/5 passing:
+   initialize / unauthorized-rejection / set+pause / paused-rejection / revoke.
+8. Click **Deploy**, copy the program ID shown after deploy.
+
+## Report back (paste into chat)
+
+```text
+program id:
+build output (last 5 lines):
+test output (all lines with PASS/FAIL + the 5 logged signatures):
+explorer links (if shown):
+```
+
+## After the report
+
+The agent will: record the program ID + signatures in
+`docs/checkpoints/phase-04.md`, flip Phase 4 to PASS, and only then await
+`PROCEED TO PHASE 05`. Nothing here touches mainnet or meaningful funds.
+
+## Troubleshooting
+
+- Airdrop rate-limited: wait 1 min, retry `solana airdrop 1`.
+- `anchor` version warnings: ignore unless build fails; paste the error back.
+- If any test FAILs: stop, paste full output — the phase stays BLOCKED.
