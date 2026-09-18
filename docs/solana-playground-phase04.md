@@ -19,22 +19,27 @@ if you did, delete everything you added and get back to the pristine template.)
    `programs/stockweave/src/lib.rs` (verbatim).
    Playground rewrites `declare_id!` to your generated program address —
    keep that address and report it back; do not paste the placeholder over it.
-4. In the Explorer, open the template's existing test file under `tests/`,
-   select-all, and paste in the CONTENT of the repo file
+4. In the Explorer, open the template's existing test file (it is named
+   `anchor.test.ts`), select-all, and paste in the CONTENT of the repo file
    `tests/stockweave.ts` (verbatim — keep the template's filename, content
-   is what matters). Ignore `Unable to format the file` — the type import
-   only resolves AFTER the first successful build.
+   is what matters). If you skip this step, the runner executes the
+   template's default test, which calls an `initialize` function our program
+   does not have — that failure is about the leftover template test, not our
+   code. Ignore `Unable to format the file` — the type import only resolves
+   AFTER the first successful build.
 5. In the Playground terminal: `solana airdrop 2` (Devnet SOL for test fees).
 6. Click **Build**. Expect success with no errors.
-7. Click **Test**. Expect 5/5 passing:
+7. In the Playground terminal, run `anchor test` (there is no Test button —
+   the terminal command is the equivalent). Expect 5/5 passing:
    initialize / unauthorized-rejection / set+pause / paused-rejection / revoke.
+   Paste the full terminal output back here.
 8. Click **Deploy**, copy the program ID shown after deploy.
 
 If Build says `Invalid path`: there are leftover files/folders you added —
 delete anything beyond the template defaults and retry. Paste your Explorer
 tree back here if it persists.
 
-## Report back (paste into chat)
+## Report back (paste into chat — NOT into the Playground terminal, which tries to run it as commands)
 
 ```text
 program id:
