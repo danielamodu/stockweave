@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StockWeave — AI Infrastructure Strategy</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; line-height: 1.5; color: #1a1a1a; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .badge { display: inline-block; padding: 2px 10px; border: 1px solid #333; border-radius: 999px; font-size: 12px; letter-spacing: 0.02em; }
+    .badge.fixture { background: #fff8e1; border-color: #b98a00; }
+    h1 { font-size: 28px; margin: 8px 0 4px; }
+    .thesis { font-size: 17px; margin: 0 0 16px; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border: 1px solid #ccc; padding: 8px 10px; text-align: left; font-size: 14px; }
+    th { background: #f5f5f5; }
+    .state { display: inline-block; padding: 2px 10px; border-radius: 4px; background: #e6f4ea; border: 1px solid #34a853; font-weight: 600; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 14px; }
+    .card h2 { font-size: 16px; margin: 0 0 8px; }
+    .card p, .card li { font-size: 14px; }
+    .disclosure { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 12px 14px; font-size: 13px; margin-top: 16px; }
+    button { font-size: 14px; padding: 8px 14px; border-radius: 6px; border: 1px solid #333; background: #fff; cursor: pointer; }
+    button[disabled] { opacity: 0.5; cursor: not-allowed; }
+    .demo-states { margin-top: 16px; }
+    #state-demo { min-height: 44px; border: 1px dashed #999; border-radius: 6px; padding: 10px 12px; font-size: 14px; margin-top: 8px; }
+    @media (max-width: 600px) {
+      body { padding: 16px 12px 48px; }
+      h1 { font-size: 22px; }
+      .grid { grid-template-columns: 1fr; }
+      table { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="badges">
+    <span class="badge fixture">DATA_MODE: FIXTURE</span>
+    <span class="badge">No wallet required</span>
+  </div>
+
+  <h1>AI Infrastructure Basket</h1>
+  <p class="thesis">Follow frontier AI labs as one transparent, forkable strategy — every asset, rule, and agent permission inspectable before you follow or fork.</p>
+
+  <h2>Assets</h2>
+  <table aria-label="Strategy assets and weights">
+    <tr><th>Asset</th><th>Issuer</th><th>Target</th><th>Current (fixture)</th></tr>
+    <tr><td>OpenAI (PreStocks)</td><td>PreStocks</td><td>30%</td><td>30%</td></tr>
+    <tr><td>Anthropic (PreStocks)</td><td>PreStocks</td><td>30%</td><td>30%</td></tr>
+    <tr><td>xAI (PreStocks)</td><td>PreStocks</td><td>30%</td><td>30%</td></tr>
+    <tr><td>USDC (reserve)</td><td>Centre</td><td>10%</td><td>10%</td></tr>
+  </table>
+  <p>Current state: <span class="state">NORMAL</span> <small>(fixture values; live Pyth valuation lands in Phase 2)</small></p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Rule set</h2>
+      <ul>
+        <li>Maximum single asset: 35%</li>
+        <li>Minimum USDC reserve: 10%</li>
+        <li>Rebalance trigger: 5 percentage points of drift</li>
+        <li>Pyth maximum age: 30 seconds</li>
+        <li>Approval required for every action</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Agent permissions</h2>
+      <ul>
+        <li>READ: enabled</li>
+        <li>PROPOSE: enabled</li>
+        <li>EXECUTE: disabled</li>
+      </ul>
+      <p>The Clawpump agent (limit: observe + propose) can explain this strategy but cannot move funds. Execution arrives in a later phase, user-approved only.</p>
+    </div>
+  </div>
+
+  <h2>Fork</h2>
+  <p><button type="button" disabled title="Forking opens in Phase 7">Fork strategy (coming in Phase 7)</button></p>
+
+  <div class="demo-states">
+    <h2>Page states</h2>
+    <p>
+      <button type="button" data-demo="loading">Preview loading</button>
+      <button type="button" data-demo="empty">Preview empty</button>
+      <button type="button" data-demo="error">Preview error</button>
+      <button type="button" data-demo="reset">Reset</button>
+    </p>
+    <div id="state-demo" role="status">Loaded fixture data. This panel previews loading, empty, and error states.</div>
+  </div>
+  <script>
+    (function () {
+      var demo = document.getElementById("state-demo");
+      var messages = {
+        loading: "Loading strategy data…",
+        empty: "No strategy found for this identifier.",
+        error: "Could not load strategy data. Check your connection and retry.",
+        reset: "Loaded fixture data. This panel previews loading, empty, and error states."
+      };
+      document.querySelectorAll("[data-demo]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          demo.textContent = messages[btn.getAttribute("data-demo")];
+        });
+      });
+    })();
+  </script>
+
+  <div class="disclosure">
+    <strong>Risk and asset disclosures.</strong>
+    <ul>
+      <li>Fixture data only (<code>DATA_MODE: FIXTURE</code>) — no live prices, no Pyth feed yet.</li>
+      <li>PreStocks tokens are SPV-backed economic exposure to pre-IPO companies, <strong>not equity ownership</strong>: no shares, no voting rights, no dividends, no guaranteed claim on basket assets, no regulated-ETF status, no profit guarantee.</li>
+      <li>PreStocks route only. Tessera, xStocks, and other non-PreStocks pre-IPO assets are excluded from this submission.</li>
+      <li>Known risks: issuer SPV-validity statements (May 2026), IPO-conversion uncertainty (e.g. SpaceX S-1), thin liquidity and exit risk, token/reference price divergence.</li>
+    </ul>
+  </div>
+</body>
+</html>

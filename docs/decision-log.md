@@ -1,5 +1,12 @@
 # StockWeave Decision Log
 
+## Phase 1 (2026-09-18)
+
+- D-101: Static fixture page at `/strategy/ai-infrastructure` with `DATA_MODE: FIXTURE`, target weights 30/30/30 + 10% USDC reserve, state NORMAL. Rejected: live Pyth/PreStocks wiring now. Reason: Phase 1 gate is communication without wallet; live valuation is Phase 2.
+- D-102: Fork button ships disabled with “coming in Phase 7” label. Reason: protocol requires disabled/placeholder fork in Phase 1; real fork is Phase 7.
+- D-103: Loading/empty/error states as client-side preview panel on the same static page. Reason: smallest implementation proving the states exist with zero dependencies.
+- D-104: Server directory → index.html fallback so the nested route serves without a framework. Reason: no new dependencies for Phase 1.
+
 ## Phase 0 (2026-09-18)
 
 - D-001: Freeze asset tickers as OpenAI / Anthropic / xAI (PreStocks) + USDC for AI Infrastructure Basket. Mints/feed IDs stay VERIFYING; Phase 1/2 must re-verify against prestocks.com + explorer + Jupiter before on-chain use. Reason: only AI-lab trio fitting theme without mixing SpaceX/defense/prediction markets; preserves PreStocks-only bounty route.

@@ -18,7 +18,7 @@ const missing = required.filter((f) => !fs.existsSync(path.join(ROOT, f)));
 const result = {
   status: missing.length === 0 ? "ok" : "fail",
   service: "stockweave",
-  phase: 0,
+  phase: 1,
   missing,
   timestamp: new Date().toISOString(),
 };
