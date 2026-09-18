@@ -1,0 +1,6 @@
+# Workspace root for the StockWeave Anchor project.
+# Members resolve to programs/*/Cargo.toml (currently programs/stockweave).
+# This file must exist at the project root in Solana Playground alongside Anchor.toml.
+[workspace]
+members = ["programs/*"]
+resolver = "2"

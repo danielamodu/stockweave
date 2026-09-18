@@ -17,6 +17,7 @@ const required = [
   "tests/phase04.js",
   "programs/stockweave/src/lib.rs",
   "programs/stockweave/Cargo.toml",
+  "Cargo.toml",
   "Anchor.toml",
   "tests/stockweave.ts",
   "docs/solana-playground-phase04.md",
