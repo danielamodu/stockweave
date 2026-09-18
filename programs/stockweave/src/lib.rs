@@ -9,7 +9,7 @@
 //! value. No program ID is claimed until the Playground deploy step in
 //! docs/solana-playground-phase04.md is run.
 
-use anchor_lang::prelude::*
+use anchor_lang::prelude::*;
 
 // Compile-only placeholder. Replaced by the Playground-generated keypair.
 declare_id!("11111111111111111111111111111111");

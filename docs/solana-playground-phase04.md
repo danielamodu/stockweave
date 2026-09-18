@@ -10,9 +10,15 @@ You touch exactly TWO files. Everything else (`Anchor.toml`, `Cargo.toml`,
 folder layout) — leave the template defaults alone.
 
 1. Open https://beta.solpg.io/ in the browser.
-2. Create a new Anchor project named **exactly** `stockweave` (lowercase).
+2. Create a new **Anchor** project (not Native) named **exactly** `stockweave`
+   (lowercase). The program file must live at
+   `programs/stockweave/src/lib.rs` — if your error paths show `src/lib.rs`,
+   you are in the wrong template or the wrong file; start over with the
+   Anchor template.
 3. Open `programs/stockweave/src/lib.rs`, select-all, paste the repo file
    `programs/stockweave/src/lib.rs` over it (verbatim, one file).
+   Playground will rewrite `declare_id!` to your generated program address —
+   keep that address and report it back; do not paste the placeholder over it.
 4. Open `tests/` — replace the test file content with the repo file
    `tests/stockweave.ts` (verbatim, one file). Ignore
    `Unable to format the file` — the type import only resolves AFTER the
