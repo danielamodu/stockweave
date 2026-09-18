@@ -6,32 +6,26 @@ copy back the program ID + build/test output into `docs/checkpoints/phase-04.md`
 
 ## Steps (~15 min, Devnet, no real funds)
 
+You touch exactly TWO files. Everything else (`Anchor.toml`, `Cargo.toml`,
+folder layout) — leave the template defaults alone.
+
 1. Open https://beta.solpg.io/ in the browser.
-2. Create a new Anchor project named **exactly** `stockweave` (lowercase —
-   the build server rejects mismatched program/folder names with `Invalid path`).
-3. Make the Explorer tree match this layout exactly (delete the template's
-   default program files if their names differ; keep the template's root
-   `Cargo.toml` OR replace it with the repo's `Cargo.toml` verbatim):
-
-```text
-Anchor.toml
-Cargo.toml                         # workspace root — was missing, caused Invalid path
-programs/stockweave/Cargo.toml
-programs/stockweave/src/lib.rs     # repo file, verbatim
-tests/stockweave.ts                # repo file, verbatim
-```
-
-4. Replace `programs/stockweave/src/lib.rs` with the repo file
-   `programs/stockweave/src/lib.rs` (copy verbatim).
-5. Replace `tests/stockweave.ts` with the repo file `tests/stockweave.ts`.
-   Ignore `Unable to format the file` on the `.ts` file for now — the type
-   import (`../target/types/stockweave`) only resolves AFTER the first
-   successful build. Do not edit the file to silence the formatter.
-6. In the Playground terminal: `solana airdrop 2` (Devnet SOL for test fees).
-7. Click **Build** (or run `anchor build`). Expect success with no errors.
-8. Click **Test** (runs `anchor test` against Devnet). Expect 5/5 passing:
+2. Create a new Anchor project named **exactly** `stockweave` (lowercase).
+3. Open `programs/stockweave/src/lib.rs`, select-all, paste the repo file
+   `programs/stockweave/src/lib.rs` over it (verbatim, one file).
+4. Open `tests/` — replace the test file content with the repo file
+   `tests/stockweave.ts` (verbatim, one file). Ignore
+   `Unable to format the file` — the type import only resolves AFTER the
+   first successful build. Do not edit the file to silence the formatter.
+5. In the Playground terminal: `solana airdrop 2` (Devnet SOL for test fees).
+6. Click **Build**. Expect success with no errors.
+7. Click **Test**. Expect 5/5 passing:
    initialize / unauthorized-rejection / set+pause / paused-rejection / revoke.
-9. Click **Deploy**, copy the program ID shown after deploy.
+8. Click **Deploy**, copy the program ID shown after deploy.
+
+If Build says `Invalid path`: the project isn't named exactly `stockweave`
+or there are leftover duplicate program files — delete the extras so the
+Explorer shows only `programs/stockweave/` plus the template defaults.
 
 ## Report back (paste into chat)
 
