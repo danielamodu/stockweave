@@ -1,0 +1,15 @@
+{
+  "name": "stockweave",
+  "version": "0.0.0",
+  "private": true,
+  "description": "StockWeave — public, forkable strategy layer for tokenized stocks on Solana (Phase 0 baseline)",
+  "scripts": {
+    "start": "node server.js",
+    "health": "node health-check.js",
+    "test": "node tests/run.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}

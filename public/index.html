@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StockWeave — Phase 0 Baseline</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; line-height: 1.5; }
+    .badge { display: inline-block; padding: 2px 8px; border: 1px solid #333; border-radius: 4px; font-size: 12px; margin-bottom: 12px; }
+    .warn { background: #fff8e1; border: 1px solid #e0c36a; padding: 12px; border-radius: 6px; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="badge">BASELINE_PLACEHOLDER — Phase 0, no live data</div>
+  <h1>StockWeave</h1>
+  <p><strong>StockWeave lets crypto-native users inspect, simulate, fork, and follow a tokenized-stock strategy without trusting an opaque portfolio manager.</strong></p>
+  <p>Target user: crypto-native strategy follower.</p>
+
+  <h2>MVP scope (frozen in Phase 0)</h2>
+  <table>
+    <tr><th>Item</th><th>Value</th></tr>
+    <tr><td>Strategy</td><td>AI Infrastructure Basket</td></tr>
+    <tr><td>Assets</td><td>3 PreStocks assets + USDC (tickers frozen, mints VERIFYING)</td></tr>
+    <tr><td>Agent mode</td><td>observe + propose by default</td></tr>
+    <tr><td>Execution</td><td>simulated or user-approved only</td></tr>
+    <tr><td>Approval</td><td>required for every action</td></tr>
+    <tr><td>Max single asset</td><td>35%</td></tr>
+    <tr><td>Min USDC reserve</td><td>10%</td></tr>
+    <tr><td>Rebalance trigger</td><td>5 percentage points</td></tr>
+    <tr><td>Pyth max age</td><td>30 seconds</td></tr>
+  </table>
+
+  <h2>Assets (Phase 0 — tickers frozen, on-chain values VERIFYING)</h2>
+  <ul>
+    <li>OpenAI (PreStocks) — mint VERIFYING in Phase 1/2</li>
+    <li>Anthropic (PreStocks) — mint VERIFYING in Phase 1/2</li>
+    <li>xAI (PreStocks) — mint VERIFYING in Phase 1/2</li>
+    <li>USDC — reserve asset</li>
+  </ul>
+
+  <div class="warn">
+    <strong>Scope exclusion:</strong> Tessera, xStocks, and all other non-PreStocks pre-IPO assets are excluded from this PreStocks submission.<br />
+    <strong>Risk:</strong> PreStocks tokens are SPV-backed economic exposure, not direct equity. Issuer refutation / IPO conversion risks apply. No live prices in Phase 0.
+  </div>
+
+  <p>Full contract: <code>docs/product-contract.md</code>. Decisions: <code>docs/decision-log.md</code>.</p>
+</body>
+</html>
