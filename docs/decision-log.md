@@ -1,5 +1,11 @@
 # StockWeave Decision Log
 
+## Phase 5 (2026-09-19)
+
+- D-501: Phase 4 flipped to PASS — Anchor tests 5/5 green on Devnet via Playground (init/unauthorized/set+pause/paused-rejection/revoke). On-chain rejections proven: `ConstraintHasOne` (2001), `StrategyPaused` (6001). Signatures recorded in `docs/checkpoints/phase-04.md`. Repo fixes: `init-if-needed` feature enabled; test file drops chai import, funds attacker by transfer (not faucet), uses unique per-run strategy id (Devnet persists state).
+- D-502: Pyth on-chain enforcement approach = **HYBRID** (user-approved 2026-09-19). Stage 5a: `propose_rebalance` takes a caller-supplied oracle snapshot (feed_id, price, publish_time) and the program rejects on-chain when `Clock - publish_time > max_price_age_seconds` (STALE) or `feed_id` mismatches (WRONG_FEED) — real on-chain freshness/feed guard, price authenticity enforced off-chain and LABELLED (not cryptographically verified on-chain). Stage 5b: separate demonstrated path reading a real Pyth `PriceUpdateV2` (pyth-solana-receiver) on a clearly-labelled borrowed feed, since pre-IPO assets have no native feed (see D-203). Rationale: satisfies the Phase 5 gate (real rejection) without fabricating a feed for the assets, while still proving trustless Pyth verification.
+- D-503: `execute_rebalance` is SIMULATE-only in Phase 5 (per product contract: "simulated or user-approved only"; no custody, no real token transfers). It records executed state + emits an event after approval + guards pass. Real swap execution is out of MVP scope.
+
 ## Phase 4 (2026-09-18)
 
 - D-401: Anchor program source (`programs/stockweave/src/lib.rs`) is repo source of truth: 6 instructions, 4 PDA types, 5 events, authority/pause guards, `declare_id!` left as compile-only placeholder — no program ID claimed until Playground deploy.

@@ -2,7 +2,15 @@
 //!
 //! Critical identity, assets, rules, and status live on-chain. Off-chain
 //! services may propose actions but can never bypass these guards.
-//! Proposal + approval instructions arrive in Phase 5.
+//!
+//! Phase 5 adds the rebalance lifecycle: propose_rebalance / approve_rebalance /
+//! execute_rebalance. The agent is an UNTRUSTED proposer — the program rejects
+//! invalid proposals (max-weight, reserve, stale oracle, wrong feed, excessive
+//! notional, revoked/expired permission) and a valid proposal cannot execute
+//! until the creator approves it with the exact approval nonce. Oracle freshness
+//! is enforced on-chain against the cluster Clock using a caller-supplied
+//! snapshot (feed_id/price/publish_time); price authenticity is enforced
+//! off-chain (see D-502). execute_rebalance is SIMULATE-only (D-503).
 //!
 //! DEPLOYED: Devnet program 2z9QVsHonA4QcZkwLAcb1P5BGyrTL9UYUrE45TrmqC2a,
 //! verified on-chain 2026-09-19 (executable, BPF upgradeable loader).
@@ -81,6 +89,7 @@ pub mod stockweave {
         rules_acct.max_trade_notional = rules.max_trade_notional;
         rules_acct.max_daily_notional = rules.max_daily_notional;
         rules_acct.max_price_age_seconds = rules.max_price_age_seconds;
+        rules_acct.reference_feed_id = rules.reference_feed_id;
         rules_acct.require_user_approval = true;
         rules_acct.version = rules_acct.version.checked_add(1).unwrap();
         rules_acct.bump = ctx.bumps.rules;
@@ -122,6 +131,7 @@ pub mod stockweave {
         perm.approval_required = true;
         perm.revoked = false;
         perm.bump = ctx.bumps.permission;
+        // action bit constants: READ=1, PROPOSE=2, EXECUTE=4.
         emit!(PermissionSet {
             strategy: strategy.key(),
             agent: perm.agent,
@@ -161,6 +171,129 @@ pub mod stockweave {
         });
         Ok(())
     }
+
+    // -----------------------------------------------------------------------
+    // Phase 5 — rebalance lifecycle. Agent proposes (untrusted), program guards
+    // reject invalid proposals, creator approves, execution is simulate-only.
+    // -----------------------------------------------------------------------
+
+    /// Agent proposes a single-asset rebalance to a new target weight. Signed by
+    /// the agent. Rejected on-chain for: paused strategy, wrong/expired/revoked
+    /// permission, missing PROPOSE grant, wrong oracle feed, stale oracle,
+    /// max-weight breach, reserve breach, or excessive notional. A successful
+    /// call only records the proposal — it CANNOT execute without approval.
+    pub fn propose_rebalance(ctx: Context<ProposeRebalance>, args: ProposeArgs) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let strategy = &ctx.accounts.strategy;
+        let rules = &ctx.accounts.rules;
+        let perm = &ctx.accounts.permission;
+
+        // --- authority / permission guards ---
+        require!(strategy.status != StrategyStatus::Paused as u8, StockWeaveError::StrategyPaused);
+        require!(perm.strategy == strategy.key(), StockWeaveError::Unauthorized);
+        require!(perm.agent == ctx.accounts.agent.key(), StockWeaveError::Unauthorized);
+        require!(!perm.revoked, StockWeaveError::PermissionRevoked);
+        require!(now < perm.expiry, StockWeaveError::PermissionExpired);
+        // PROPOSE bit (0b010) must be granted.
+        require!(perm.allowed_actions & 0b010 != 0, StockWeaveError::ProposeNotAllowed);
+
+        // --- oracle guards (freshness enforced on-chain vs cluster Clock) ---
+        require!(args.oracle_feed_id == rules.reference_feed_id, StockWeaveError::WrongFeed);
+        require!(args.oracle_publish_time <= now, StockWeaveError::StaleOracle);
+        let age = now.checked_sub(args.oracle_publish_time).unwrap_or(i64::MAX);
+        require!(age <= rules.max_price_age_seconds as i64, StockWeaveError::StaleOracle);
+
+        // --- risk guards ---
+        require!(
+            args.new_target_weight_bps <= rules.max_single_asset_weight_bps,
+            StockWeaveError::MaxWeightExceeded
+        );
+        require!(
+            args.projected_reserve_bps >= rules.reserve_weight_bps,
+            StockWeaveError::ReserveBreach
+        );
+        require!(args.notional <= rules.max_trade_notional, StockWeaveError::ExcessiveNotional);
+        require!(args.notional <= perm.max_notional_per_action, StockWeaveError::ExcessiveNotional);
+        require!(args.expires_at > now, StockWeaveError::ProposalExpired);
+
+        // Capture before taking the &mut borrow on a sibling account field.
+        let strategy_key = strategy.key();
+        let agent_key = ctx.accounts.agent.key();
+        let proposal = &mut ctx.accounts.proposal;
+        proposal.strategy = strategy_key;
+        proposal.proposal_id = args.proposal_id;
+        proposal.created_by = agent_key;
+        proposal.mint = args.mint;
+        proposal.new_target_weight_bps = args.new_target_weight_bps;
+        proposal.projected_reserve_bps = args.projected_reserve_bps;
+        proposal.notional = args.notional;
+        proposal.reason_code = args.reason_code;
+        proposal.oracle_feed_id = args.oracle_feed_id;
+        proposal.oracle_price = args.oracle_price;
+        proposal.oracle_publish_time = args.oracle_publish_time;
+        proposal.approval_nonce = args.approval_nonce;
+        proposal.expires_at = args.expires_at;
+        proposal.status = ProposalStatus::Proposed as u8;
+        proposal.bump = ctx.bumps.proposal;
+        emit!(RebalanceProposed {
+            strategy: strategy_key,
+            proposal: proposal.key(),
+            proposal_id: proposal.proposal_id,
+            mint: proposal.mint,
+            new_target_weight_bps: proposal.new_target_weight_bps,
+            notional: proposal.notional,
+        });
+        Ok(())
+    }
+
+    /// Creator approves a pending proposal. The approval is bound to the exact
+    /// proposal AND its approval nonce, and rejected if the proposal is expired
+    /// or not in Proposed state.
+    pub fn approve_rebalance(ctx: Context<ApproveRebalance>, approval_nonce: u64) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let strategy_key = ctx.accounts.strategy.key();
+        require!(
+            ctx.accounts.strategy.status != StrategyStatus::Paused as u8,
+            StockWeaveError::StrategyPaused
+        );
+        let proposal = &mut ctx.accounts.proposal;
+        require!(proposal.strategy == strategy_key, StockWeaveError::Unauthorized);
+        require!(proposal.status == ProposalStatus::Proposed as u8, StockWeaveError::BadProposalState);
+        require!(now <= proposal.expires_at, StockWeaveError::ProposalExpired);
+        require!(approval_nonce == proposal.approval_nonce, StockWeaveError::BadApprovalNonce);
+        proposal.status = ProposalStatus::Approved as u8;
+        emit!(RebalanceApproved {
+            strategy: strategy_key,
+            proposal: proposal.key(),
+            proposal_id: proposal.proposal_id,
+        });
+        Ok(())
+    }
+
+    /// Simulate execution of an approved proposal (D-503: no custody/real swaps).
+    /// Rejected unless the proposal is Approved, unexpired, and the strategy is
+    /// active. Records the executed state and emits the lifecycle event.
+    pub fn execute_rebalance(ctx: Context<ExecuteRebalance>) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let strategy_key = ctx.accounts.strategy.key();
+        require!(
+            ctx.accounts.strategy.status != StrategyStatus::Paused as u8,
+            StockWeaveError::StrategyPaused
+        );
+        let proposal = &mut ctx.accounts.proposal;
+        require!(proposal.strategy == strategy_key, StockWeaveError::Unauthorized);
+        require!(proposal.status == ProposalStatus::Approved as u8, StockWeaveError::BadProposalState);
+        require!(now <= proposal.expires_at, StockWeaveError::ProposalExpired);
+        proposal.status = ProposalStatus::Executed as u8;
+        emit!(RebalanceExecuted {
+            strategy: strategy_key,
+            proposal: proposal.key(),
+            proposal_id: proposal.proposal_id,
+            new_target_weight_bps: proposal.new_target_weight_bps,
+            simulated: true,
+        });
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +327,9 @@ pub struct Rules {
     pub max_trade_notional: u64,
     pub max_daily_notional: u64,
     pub max_price_age_seconds: u64,
+    // Expected Pyth feed id for the strategy's reference market; a proposal
+    // carrying any other feed id is rejected (WrongFeed). All-zero = unset.
+    pub reference_feed_id: [u8; 32],
     pub require_user_approval: bool,
     pub version: u64,
     pub bump: u8,
@@ -231,6 +367,51 @@ pub struct RuleSetParams {
     pub max_trade_notional: u64,
     pub max_daily_notional: u64,
     pub max_price_age_seconds: u64,
+    pub reference_feed_id: [u8; 32],
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ProposalStatus {
+    Proposed = 0,
+    Approved = 1,
+    Executed = 2,
+    Rejected = 3,
+    Expired = 4,
+}
+
+#[account]
+pub struct RebalanceProposal {
+    pub strategy: Pubkey,
+    pub proposal_id: u64,
+    pub created_by: Pubkey,
+    pub mint: Pubkey,
+    pub new_target_weight_bps: u16,
+    pub projected_reserve_bps: u16,
+    pub notional: u64,
+    pub reason_code: u8,
+    pub oracle_feed_id: [u8; 32],
+    pub oracle_price: i64,
+    pub oracle_publish_time: i64,
+    pub approval_nonce: u64,
+    pub expires_at: i64,
+    pub status: u8,
+    pub bump: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct ProposeArgs {
+    pub proposal_id: u64,
+    pub mint: Pubkey,
+    pub new_target_weight_bps: u16,
+    pub projected_reserve_bps: u16,
+    pub notional: u64,
+    pub reason_code: u8,
+    pub oracle_feed_id: [u8; 32],
+    pub oracle_price: i64,
+    pub oracle_publish_time: i64,
+    pub approval_nonce: u64,
+    pub expires_at: i64,
 }
 
 // Deterministic seeds — identical inputs always derive identical addresses.
@@ -276,7 +457,8 @@ pub struct SetRules<'info> {
     #[account(
         init_if_needed,
         payer = creator,
-        space = 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 8 + 1,
+        // disc + strategy + 3xu16 + 3xu64 + feed_id[32] + bool + version u64 + bump
+        space = 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 32 + 1 + 8 + 1,
         seeds = [b"rules", strategy.key().as_ref()],
         bump
     )]
@@ -321,6 +503,58 @@ pub struct RevokeAgent<'info> {
     pub creator: Signer<'info>,
 }
 
+#[derive(Accounts)]
+#[instruction(args: ProposeArgs)]
+pub struct ProposeRebalance<'info> {
+    pub strategy: Account<'info, Strategy>,
+    #[account(seeds = [b"rules", strategy.key().as_ref()], bump = rules.bump)]
+    pub rules: Account<'info, Rules>,
+    #[account(
+        seeds = [b"permission", strategy.key().as_ref(), agent.key().as_ref()],
+        bump = permission.bump
+    )]
+    pub permission: Account<'info, AgentPermission>,
+    #[account(
+        init,
+        payer = agent,
+        // disc + strategy + id + created_by + mint + 2xu16 + notional + reason
+        //   + feed[32] + price + publish + nonce + expires + status + bump
+        space = 8 + 32 + 8 + 32 + 32 + 2 + 2 + 8 + 1 + 32 + 8 + 8 + 8 + 8 + 1 + 1,
+        seeds = [b"proposal", strategy.key().as_ref(), args.proposal_id.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub proposal: Account<'info, RebalanceProposal>,
+    #[account(mut)]
+    pub agent: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ApproveRebalance<'info> {
+    #[account(has_one = creator)]
+    pub strategy: Account<'info, Strategy>,
+    #[account(
+        mut,
+        seeds = [b"proposal", strategy.key().as_ref(), proposal.proposal_id.to_le_bytes().as_ref()],
+        bump = proposal.bump
+    )]
+    pub proposal: Account<'info, RebalanceProposal>,
+    pub creator: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ExecuteRebalance<'info> {
+    #[account(has_one = creator)]
+    pub strategy: Account<'info, Strategy>,
+    #[account(
+        mut,
+        seeds = [b"proposal", strategy.key().as_ref(), proposal.proposal_id.to_le_bytes().as_ref()],
+        bump = proposal.bump
+    )]
+    pub proposal: Account<'info, RebalanceProposal>,
+    pub creator: Signer<'info>,
+}
+
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
@@ -356,6 +590,32 @@ pub struct AgentRevoked {
     pub agent: Pubkey,
 }
 
+#[event]
+pub struct RebalanceProposed {
+    pub strategy: Pubkey,
+    pub proposal: Pubkey,
+    pub proposal_id: u64,
+    pub mint: Pubkey,
+    pub new_target_weight_bps: u16,
+    pub notional: u64,
+}
+
+#[event]
+pub struct RebalanceApproved {
+    pub strategy: Pubkey,
+    pub proposal: Pubkey,
+    pub proposal_id: u64,
+}
+
+#[event]
+pub struct RebalanceExecuted {
+    pub strategy: Pubkey,
+    pub proposal: Pubkey,
+    pub proposal_id: u64,
+    pub new_target_weight_bps: u16,
+    pub simulated: bool,
+}
+
 #[error_code]
 pub enum StockWeaveError {
     #[msg("Signer is not the strategy creator/authority.")]
@@ -368,4 +628,26 @@ pub enum StockWeaveError {
     BadRules,
     #[msg("Unknown permission action bits.")]
     BadPermission,
+    #[msg("Agent permission has been revoked.")]
+    PermissionRevoked,
+    #[msg("Agent permission has expired.")]
+    PermissionExpired,
+    #[msg("Agent lacks the PROPOSE grant.")]
+    ProposeNotAllowed,
+    #[msg("Oracle feed id does not match the strategy reference feed.")]
+    WrongFeed,
+    #[msg("Oracle price is stale (older than max_price_age_seconds).")]
+    StaleOracle,
+    #[msg("Proposed weight exceeds the maximum single-asset weight.")]
+    MaxWeightExceeded,
+    #[msg("Projected USDC reserve is below the minimum.")]
+    ReserveBreach,
+    #[msg("Trade notional exceeds a per-action limit.")]
+    ExcessiveNotional,
+    #[msg("Proposal is expired or its expiry is not in the future.")]
+    ProposalExpired,
+    #[msg("Approval nonce does not match the proposal.")]
+    BadApprovalNonce,
+    #[msg("Proposal is not in the required state.")]
+    BadProposalState,
 }

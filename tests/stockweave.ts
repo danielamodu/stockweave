@@ -101,6 +101,7 @@ describe("stockweave-phase4", () => {
         maxTradeNotional: new anchor.BN(50),
         maxDailyNotional: new anchor.BN(200),
         maxPriceAgeSeconds: new anchor.BN(30),
+        referenceFeedId: Array(32).fill(1),
       })
       .accounts({ strategy: strategyPda, rules: rulesPda, creator: creator.publicKey })
       .rpc();
@@ -143,5 +144,180 @@ describe("stockweave-phase4", () => {
     console.log("revoke_agent:", sig);
     const perm = await program.account.agentPermission.fetch(permPda);
     assert.equal(perm.revoked, true);
+  });
+});
+
+// Phase 5 — rebalance lifecycle on-chain. Fresh, ACTIVE strategy (the phase-4
+// strategy ends up paused/revoked). Proves: valid proposal → approval →
+// simulated execution, plus on-chain rejection of an over-max-weight proposal
+// and a stale-oracle proposal. Oracle timestamps use the cluster clock so
+// freshness is judged against the same clock the program reads.
+describe("stockweave-phase5", () => {
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
+  const program = anchor.workspace.Stockweave as Program<Stockweave>;
+  const creator = provider.wallet;
+
+  const strategyId = `p5-${Date.now()}`;
+  const [strategyPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("strategy"), creator.publicKey.toBuffer(), Buffer.from(strategyId)],
+    program.programId
+  );
+  const [rulesPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("rules"), strategyPda.toBuffer()],
+    program.programId
+  );
+  const agent = anchor.web3.Keypair.generate();
+  const [permPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("permission"), strategyPda.toBuffer(), agent.publicKey.toBuffer()],
+    program.programId
+  );
+  const mint = anchor.web3.Keypair.generate().publicKey;
+  const [assetPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("asset"), strategyPda.toBuffer(), mint.toBuffer()],
+    program.programId
+  );
+  const REF_FEED = Array(32).fill(7);
+  let clusterNow: number;
+
+  function proposalPda(id: number) {
+    return anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("proposal"), strategyPda.toBuffer(), new anchor.BN(id).toArrayLike(Buffer, "le", 8)],
+      program.programId
+    )[0];
+  }
+
+  function args(overrides: any) {
+    return {
+      proposalId: new anchor.BN(1),
+      mint,
+      newTargetWeightBps: 3480,
+      projectedReserveBps: 1050,
+      notional: new anchor.BN(42),
+      reasonCode: 1,
+      oracleFeedId: REF_FEED,
+      oraclePrice: new anchor.BN(100),
+      oraclePublishTime: new anchor.BN(clusterNow),
+      approvalNonce: new anchor.BN(7),
+      expiresAt: new anchor.BN(clusterNow + 3600),
+      ...overrides,
+    };
+  }
+
+  it("sets up an active phase-5 strategy (assets, rules, agent, funding)", async () => {
+    await program.methods
+      .initializeStrategy(strategyId)
+      .accounts({ strategy: strategyPda, creator: creator.publicKey })
+      .rpc();
+    await program.methods
+      .setAssets(3000, 3500)
+      .accounts({ strategy: strategyPda, asset: assetPda, mint, creator: creator.publicKey })
+      .rpc();
+    await program.methods
+      .setRules({
+        reserveWeightBps: 1000,
+        rebalanceDriftBps: 500,
+        maxSingleAssetWeightBps: 3500,
+        maxTradeNotional: new anchor.BN(50),
+        maxDailyNotional: new anchor.BN(200),
+        maxPriceAgeSeconds: new anchor.BN(30),
+        referenceFeedId: REF_FEED,
+      })
+      .accounts({ strategy: strategyPda, rules: rulesPda, creator: creator.publicKey })
+      .rpc();
+    await program.methods
+      .setAgentPermission(0b011, new anchor.BN(50), new anchor.BN(200), new anchor.BN(9_999_999_999))
+      .accounts({ strategy: strategyPda, permission: permPda, agent: agent.publicKey, creator: creator.publicKey })
+      .rpc();
+    // Fund the agent so it can pay for the proposal account + fees.
+    const fundTx = new anchor.web3.Transaction().add(
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: creator.publicKey,
+        toPubkey: agent.publicKey,
+        lamports: 20_000_000,
+      })
+    );
+    await provider.sendAndConfirm(fundTx);
+    // Read the cluster clock for oracle timestamps.
+    const slot = await provider.connection.getSlot();
+    clusterNow = (await provider.connection.getBlockTime(slot)) as number;
+  });
+
+  it("Scenario B: valid proposal is accepted, needs approval, then executes", async () => {
+    const proposal = proposalPda(1);
+    const proposeSig = await program.methods
+      .proposeRebalance(args({ proposalId: new anchor.BN(1) }))
+      .accounts({ strategy: strategyPda, rules: rulesPda, permission: permPda, proposal, agent: agent.publicKey })
+      .signers([agent])
+      .rpc();
+    console.log("propose_rebalance:", proposeSig);
+    const p = await program.account.rebalanceProposal.fetch(proposal);
+    assert.equal(p.status, 0); // Proposed — cannot execute yet
+
+    const approveSig = await program.methods
+      .approveRebalance(new anchor.BN(7))
+      .accounts({ strategy: strategyPda, proposal, creator: creator.publicKey })
+      .rpc();
+    console.log("approve_rebalance:", approveSig);
+
+    const execSig = await program.methods
+      .executeRebalance()
+      .accounts({ strategy: strategyPda, proposal, creator: creator.publicKey })
+      .rpc();
+    console.log("execute_rebalance:", execSig);
+    const pe = await program.account.rebalanceProposal.fetch(proposal);
+    assert.equal(pe.status, 2); // Executed (simulated)
+  });
+
+  it("Scenario A: weight above 35% is rejected on-chain (MaxWeightExceeded)", async () => {
+    const proposal = proposalPda(2);
+    let failed = false;
+    try {
+      await program.methods
+        .proposeRebalance(args({ proposalId: new anchor.BN(2), newTargetWeightBps: 4120 }))
+        .accounts({ strategy: strategyPda, rules: rulesPda, permission: permPda, proposal, agent: agent.publicKey })
+        .signers([agent])
+        .rpc();
+    } catch (e) {
+      failed = true;
+      console.log("invalid weight rejected:", e.toString().slice(0, 180));
+    }
+    assert.ok(failed, "over-max-weight proposal must be rejected");
+  });
+
+  it("Scenario C: stale oracle is rejected on-chain (StaleOracle)", async () => {
+    const proposal = proposalPda(3);
+    let failed = false;
+    try {
+      await program.methods
+        .proposeRebalance(args({ proposalId: new anchor.BN(3), oraclePublishTime: new anchor.BN(clusterNow - 120) }))
+        .accounts({ strategy: strategyPda, rules: rulesPda, permission: permPda, proposal, agent: agent.publicKey })
+        .signers([agent])
+        .rpc();
+    } catch (e) {
+      failed = true;
+      console.log("stale oracle rejected:", e.toString().slice(0, 180));
+    }
+    assert.ok(failed, "stale-oracle proposal must be rejected");
+  });
+
+  it("approval requires the exact nonce (BadApprovalNonce)", async () => {
+    const proposal = proposalPda(4);
+    await program.methods
+      .proposeRebalance(args({ proposalId: new anchor.BN(4) }))
+      .accounts({ strategy: strategyPda, rules: rulesPda, permission: permPda, proposal, agent: agent.publicKey })
+      .signers([agent])
+      .rpc();
+    let failed = false;
+    try {
+      await program.methods
+        .approveRebalance(new anchor.BN(8)) // wrong nonce
+        .accounts({ strategy: strategyPda, proposal, creator: creator.publicKey })
+        .rpc();
+    } catch (e) {
+      failed = true;
+      console.log("bad approval nonce rejected:", e.toString().slice(0, 180));
+    }
+    assert.ok(failed, "wrong approval nonce must be rejected");
   });
 });
