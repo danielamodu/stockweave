@@ -1,5 +1,10 @@
 # StockWeave Decision Log
 
+## Phase 6 (2026-09-19)
+
+- D-601: Clawpump agent implemented as a DETERMINISTIC constrained proposer in `lib/agent.js`. It consumes the rules-engine classification + on-chain-mirrored permission and returns structured output (state, reasonCodes, summary, action, trades, requiresApproval). It never decides numeric limits/weight-validity/oracle-freshness (rules engine does) and never returns EXECUTE. The plain-language `summary` is a TEMPLATE over the real numbers — NOT fabricated LLM prose. A real LLM/Clawpump-platform/MCP binding is a documented seam (the `decide()` input/output contract); it is not faked. Rejected: inventing a Clawpump SDK/agent id (see D-006 — Clawpump IDs still TBD) or claiming an LLM call we don't make.
+- D-602: Agent surfaced at `GET /api/agent[?demo=…][&revoked=1]`; permissions rendered in plain language via `describePermissions`. `revoked=1` demonstrates that revocation immediately blocks proposals. Default mandate READ+PROPOSE, EXECUTE off, $50/action + $200/day caps — mirrors the on-chain AgentPermission.
+
 ## Phase 5 (2026-09-19)
 
 - D-501: Phase 4 flipped to PASS — Anchor tests 5/5 green on Devnet via Playground (init/unauthorized/set+pause/paused-rejection/revoke). On-chain rejections proven: `ConstraintHasOne` (2001), `StrategyPaused` (6001). Signatures recorded in `docs/checkpoints/phase-04.md`. Repo fixes: `init-if-needed` feature enabled; test file drops chai import, funds attacker by transfer (not faucet), uses unique per-run strategy id (Devnet persists state).

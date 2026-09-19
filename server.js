@@ -7,6 +7,7 @@ const path = require("path");
 const { listApprovedAssets } = require("./lib/asset-registry");
 const { getTokenPriceBySymbol, getReferencePrice } = require("./lib/price-provider");
 const { DEMO_FEED_ID } = require("./lib/pyth");
+const agent = require("./lib/agent");
 const {
   TARGET_WEIGHTS_BPS,
   HOLDINGS_UNITS,
@@ -118,12 +119,56 @@ function buildStrategySnapshot(demo) {
   };
 }
 
+// Phase 6 — run the constrained Clawpump agent over the current snapshot.
+// `revoked=1` demonstrates that revocation immediately blocks proposals.
+function buildAgentDecision(demo, revoked) {
+  const snap = buildStrategySnapshot(demo);
+  const v = snap.valuation;
+  const permission = {
+    agentId: "clawpump-demo-1",
+    allowedActions: 0b011, // READ + PROPOSE; EXECUTE opt-in only (D-601)
+    maxNotionalPerAction: 50,
+    maxDailyNotional: 200,
+    expiry: Math.floor(Date.now() / 1000) + 86400,
+    revoked: Boolean(revoked),
+  };
+  const decision = agent.decide({
+    strategyState: v.state,
+    reasonCodes: v.reasonCodes,
+    currentWeightsBps: v.currentWeights,
+    targetWeightsBps: v.targetWeights,
+    dataQuality: v.dataFreshness,
+    proposalAllowed: v.proposalAllowed,
+    navUsd: v.markNAV,
+    rules: { maxTradeNotional: 50, maxDailyNotional: 200 },
+    permissions: permission,
+    nowSeconds: Math.floor(Date.now() / 1000),
+  });
+  return {
+    dataMode: "FIXTURE",
+    demoMode: snap.demoMode,
+    agentId: permission.agentId,
+    permission,
+    // The underlying numbers travel WITH the agent prose — the explanation is
+    // never the evidence (see architecture §4).
+    inputs: {
+      state: v.state,
+      reasonCodes: v.reasonCodes,
+      currentWeights: v.currentWeights,
+      targetWeights: v.targetWeights,
+      dataFreshness: v.dataFreshness,
+      markNAV: v.markNAV,
+    },
+    decision,
+  };
+}
+
 const server = http.createServer((req, res) => {
   const [urlPath, queryString] = req.url.split("?");
   const query = new URLSearchParams(queryString || "");
   if (urlPath === "/health") {
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ status: "ok", service: "stockweave", phase: 4 }));
+    res.end(JSON.stringify({ status: "ok", service: "stockweave", phase: 6 }));
     return;
   }
   if (urlPath === "/api/assets") {
@@ -132,6 +177,10 @@ const server = http.createServer((req, res) => {
   }
   if (urlPath === "/api/strategy") {
     sendJson(res, buildStrategySnapshot(query.get("demo") || "fresh"));
+    return;
+  }
+  if (urlPath === "/api/agent") {
+    sendJson(res, buildAgentDecision(query.get("demo") || "fresh", query.get("revoked")));
     return;
   }
   const rel = urlPath === "/" ? "/index.html" : urlPath;
@@ -155,7 +204,7 @@ const server = http.createServer((req, res) => {
 
 if (require.main === module) {
   server.listen(PORT, () => {
-    console.log(`StockWeave Phase 4 listening on http://localhost:${PORT}`);
+    console.log(`StockWeave Phase 6 listening on http://localhost:${PORT}`);
   });
 }
 
