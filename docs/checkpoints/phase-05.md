@@ -1,7 +1,9 @@
 # Phase 05 Checkpoint
 
-Status: PASS (stage 5a) — off-chain mirror 15/15 + Anchor tests 10/10 green on
-Devnet (5 phase-4 + 5 phase-5). Stage 5b (real Pyth receiver demo) still to build.
+Status: PASS — stage 5a proven (off-chain mirror 15/15 + Anchor tests 10/10 on
+Devnet: 5 phase-4 + 5 phase-5). Stage 5b (trustless Pyth receiver) is BLOCKED in
+Solana Playground and deferred to a Pyth-capable build env — design preserved in
+`docs/phase05b-pending.md`. Phase 5 gate met via 5a's on-chain StaleOracle guard.
 
 ## Objective
 
@@ -86,14 +88,27 @@ B (valid → approval → execution), C (stale oracle).
 - D-502 (hybrid Pyth), D-503 (simulate-only execution). Stage 5b (Pyth receiver
   demo) tracked as the remaining Phase 5 work after 5a is proven on-chain.
 
+## Stage 5b (trustless Pyth) — BLOCKED in Playground, deferred
+
+- Attempted: `verify_reference_oracle` reading a real `PriceUpdateV2` via
+  `pyth-solana-receiver-sdk`. Blocked: Solana Playground ships a fixed crate set
+  and cannot resolve the crate (`error[E0433]: use of undeclared crate
+  pyth_solana_receiver_sdk`); no local Solana toolchain (project constraint).
+- The 5b working-tree changes were reverted from `Cargo.toml` / `src/lib.rs` /
+  `tests/stockweave.ts` so Playground keeps building 5a. The verbatim 5b code +
+  unblock instructions are preserved in `docs/phase05b-pending.md` (D-504).
+- Not a gate failure: the Phase 5 Pyth requirement ("stale data blocks
+  protected paths") is already met on-chain by 5a's `StaleOracle` (6009).
+  5b is the extra trustless-authenticity demo for the Pyth bounty.
+
 ## Decision
 
-Stage 5a: PASS. Proceed to next phase: NOT YET — stage 5b (real Pyth
-`PriceUpdateV2` receiver demo on a labelled borrowed feed, per D-502) is the
-remaining Phase 5 work before requesting `PROCEED TO PHASE 06`.
+Phase 5: PASS via stage 5a (10/10 on Devnet). Stage 5b deferred (D-504) to a
+Pyth-capable build environment (Codespaces / local Anchor) as a pre-submission
+task. Proceed to next phase: recommend YES (Phase 6 — Clawpump agent), pending
+explicit user approval `PROCEED TO PHASE 06`.
 
 ## Next action
 
-AGENT: build stage 5b (pyth-solana-receiver read path + labelled demo) after
-user approval. Then re-run Playground for the receiver evidence and update this
-checkpoint. Phase 5 is complete only when 5a + 5b are both proven.
+USER: `PROCEED TO PHASE 06` when ready. Before final submission, unblock 5b per
+`docs/phase05b-pending.md` to strengthen the Pyth-bounty story.

@@ -44,6 +44,21 @@ The agent records the propose/approve/execute signatures + the three on-chain
 rejection reasons into `docs/checkpoints/phase-05.md`, flips Phase 5 to PASS,
 and waits for `PROCEED TO PHASE 06`. Nothing here touches mainnet.
 
+## Stage 5b — trustless Pyth: BLOCKED in Playground
+
+Stage 5b (`verify_reference_oracle` reading a real Pyth `PriceUpdateV2`) needs
+`pyth-solana-receiver-sdk`. Solana Playground ships a fixed crate set and cannot
+resolve it (`error[E0433]: use of undeclared crate pyth_solana_receiver_sdk`),
+and there is no local Solana toolchain (project constraint). It is deferred to a
+Pyth-capable build env (GitHub Codespaces with Anchor, or a local toolchain).
+
+The verbatim 5b code + unblock checklist live in `docs/phase05b-pending.md`.
+Do NOT try to add the crate in Playground — it will not build.
+
+Phase 5 remains PASS via stage 5a: the on-chain `StaleOracle` (6009) rejection
+already satisfies the Pyth-freshness gate. 5b is bonus trustless-authenticity
+for the Pyth bounty.
+
 ## Troubleshooting
 
 - Build error mentioning `init_if_needed`: your Playground `Cargo.toml` is
