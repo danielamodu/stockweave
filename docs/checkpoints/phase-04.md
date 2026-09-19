@@ -1,6 +1,6 @@
 # Phase 04 Checkpoint
 
-Status: PARTIAL — program deployed + verified, test evidence pending
+Status: PASS — program deployed + verified, Anchor tests 5/5 green on Devnet
 
 ## Objective
 
@@ -17,8 +17,29 @@ Move the strategy's critical identity, assets, rules, and status on-chain: 6 ins
 ## Tests run
 
 - `npm test`: 42/42 PASS (6 + 9 + 9 + 11 + 7 mirror checks — deterministic seeds, unauthorized rejection, 5 events, pause rejection, revoke, expiry, program-source completeness).
-- Anchor build: NOT RUN (no toolchain on PC by constraint; browser Playground required).
-- Anchor/Devnet tests: NOT RUN (same reason). No transaction signatures exist.
+- Anchor build: PASS (Solana Playground, browser; init-if-needed feature enabled).
+- Anchor/Devnet tests (`anchor test`, Playground → Devnet): **5/5 PASS (10s)**.
+  1. initializes the strategy with deterministic seeds — PASS
+  2. rejects an unauthorized writer — PASS (on-chain `ConstraintHasOne` / 2001)
+  3. sets assets, rules, and agent permission, then pauses — PASS
+  4. rejects protected actions while paused — PASS (on-chain `StrategyPaused` / 6001)
+  5. revokes the agent — PASS (`perm.revoked == true`)
+
+### Test-file fixes made during verification (repo = source of truth)
+
+- `programs/stockweave/Cargo.toml`: enabled `init-if-needed` feature on
+  anchor-lang — the program uses `init_if_needed` in set_assets/set_rules/
+  set_agent_permission and did not compile without it.
+- `tests/stockweave.ts`:
+  - Removed the `chai` import (Playground can't resolve the package, even a
+    type-only import); `assert` is declared against Playground's injected global.
+  - Test 2 funds the throwaway "attacker" via a wallet-to-wallet transfer
+    instead of `requestAirdrop` — the Devnet faucet threw "Internal error" and
+    failed the test for the wrong reason. Transfer reaches the authority guard.
+  - Strategy id is now unique per run (`ai-infrastructure-${Date.now()}`).
+    Devnet persists state across runs, so a fixed id collided ("already in
+    use") and left a paused strategy that broke later tests. Derivation stays
+    deterministic per id.
 
 ## Evidence
 
@@ -30,17 +51,23 @@ Move the strategy's critical identity, assets, rules, and status on-chain: 6 ins
     executable=true.
   - Recorded in `programs/stockweave/src/lib.rs` (`declare_id!`) and
     `Anchor.toml` (`[programs.devnet]`).
-  - Anchor test output (5/5): PENDING — user to paste from Playground.
-  - Instruction signatures (initialize/permission/pause/revoke): PENDING.
-- screenshot or recording: one Devnet explorer success screenshot + raw-tx hex
-  received; signature transcription from image failed (89 chars, invalid) —
-  exact signature text still needed if tx-level evidence is required.
+  - Anchor test output (5/5 PASS, Devnet, via Playground `anchor test`):
+    - initialize_strategy:
+      `2JzQhKJM2ZsbCpSLZAAkjaZWikb1LE3YUH649YdtW3wXVsbgHH2KnnNJpiKKj17abBevaA2ZUFT9owwbRCJeGMYi`
+    - set_agent_permission:
+      `htVrXJHkQqoyUtSQWqCezPo1NpBDYq4HgRJmPLgRY7sgwUMBWTwWS3A52iT2ELMcr4wYWuRfzKMh5PRDW2Fm2QC`
+    - pause_strategy:
+      `SyQ7bWwqaisyTKM5y9PwGML1VQoVVrmtWNa9iz31VhzNZUwNjWimCkBEr5PSrByFkroLrgZ2td4iLS8vWdPdqgj`
+    - revoke_agent:
+      `5TsHBSQADo5ygJ5dNDXBR8YZzACf4SkhSaBB2yN95MuTGqeZyqUua9L1thSv9V9BTmzbM3RTEQ4XGbEZQ3MBBnqX`
+  - On-chain rejections proven (not just UI warnings):
+    - Unauthorized write → `ConstraintHasOne` (error 2001).
+    - Protected action while paused → `StrategyPaused` (error 6001).
 
 ## Known failures
 
-- Anchor test evidence (5/5 green + instruction signatures) still missing.
-  Build is proven (deploy succeeded), but the rejection-path tests
-  (unauthorized / paused / revoke) are unverified on-chain.
+- None. All 5 Anchor tests pass on Devnet; both rejection paths
+  (unauthorized, paused) are proven by on-chain AnchorErrors.
 
 ## Risks
 
@@ -53,10 +80,10 @@ Move the strategy's critical identity, assets, rules, and status on-chain: 6 ins
 
 ## Decision
 
-Proceed to next phase: NO — awaiting Anchor test output (5/5 + signatures)
+Proceed to next phase: YES (recommended) — Phase 4 objective met and verified.
+Awaiting explicit user approval (`PROCEED TO PHASE 05`) before any Phase 5 work.
 
 ## Next action
 
-USER: in Playground, click Test and paste the full output (PASS/FAIL lines +
-logged signatures). Agent records them here and flips Phase 4 to PASS.
-Do NOT approve Phase 5 until then.
+USER: review this checkpoint and, if satisfied, reply `PROCEED TO PHASE 05`.
+Agent will not begin Phase 5 (propose/approve/execute rebalance) until then.

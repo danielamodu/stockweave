@@ -16,4 +16,8 @@ cpi = ["no-entrypoint"]
 default = []
 
 [dependencies]
-anchor-lang = "0.30.1"
+# init-if-needed is required: set_assets/set_rules/set_agent_permission use
+# `init_if_needed` so protected instructions reach their in-body guards (e.g.
+# the pause check) instead of failing on account re-init. Without this feature
+# the program does not compile. Mirror this line into the Playground Cargo.toml.
+anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }

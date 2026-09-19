@@ -5,7 +5,14 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Stockweave } from "../target/types/stockweave";
-import { assert } from "chai";
+// `assert` is injected as a global by Solana Playground. That package is NOT
+// importable there (even a type-only import of it makes the bundler fail with
+// "Package ... is not available"), so we declare the global loosely instead.
+// `.equal(actual, expected)` and `.ok(value, msg)` behave as expected.
+declare const assert: {
+  equal(actual: unknown, expected: unknown, msg?: string): void;
+  ok(value: unknown, msg?: string): void;
+};
 
 describe("stockweave-phase4", () => {
   const provider = anchor.AnchorProvider.env();
@@ -13,7 +20,11 @@ describe("stockweave-phase4", () => {
   const program = anchor.workspace.Stockweave as Program<Stockweave>;
   const creator = provider.wallet;
 
-  const strategyId = "ai-infrastructure";
+  // Unique per run: Devnet persists state across runs (unlike a local
+  // validator), so a fixed id would collide on the second run ("account
+  // already in use") and leave a paused strategy that breaks later tests.
+  // PDA derivation stays deterministic for a given id — we just don't reuse ids.
+  const strategyId = `ai-infrastructure-${Date.now()}`;
   const [strategyPda] = anchor.web3.PublicKey.findProgramAddressSync(
     [Buffer.from("strategy"), creator.publicKey.toBuffer(), Buffer.from(strategyId)],
     program.programId
@@ -47,9 +58,19 @@ describe("stockweave-phase4", () => {
 
   it("rejects an unauthorized writer", async () => {
     const attacker = anchor.web3.Keypair.generate();
-    // Airdrop so the tx reaches the program guard instead of failing on funds.
-    const airdrop = await provider.connection.requestAirdrop(attacker.publicKey, 1_000_000_000);
-    await provider.connection.confirmTransaction(airdrop);
+    // Fund the attacker from the main wallet so the tx reaches the program's
+    // authority guard instead of failing on fees. (Devnet faucet airdrops are
+    // flaky and throw "Internal error", which would fail this test for the
+    // wrong reason — we want the on-chain Unauthorized rejection, not a funding
+    // error.) 0.01 SOL is plenty for a single transaction fee.
+    const fundTx = new anchor.web3.Transaction().add(
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: creator.publicKey,
+        toPubkey: attacker.publicKey,
+        lamports: 10_000_000,
+      })
+    );
+    await provider.sendAndConfirm(fundTx);
     let failed = false;
     try {
       await program.methods
