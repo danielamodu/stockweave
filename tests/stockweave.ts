@@ -321,3 +321,111 @@ describe("stockweave-phase5", () => {
     assert.ok(failed, "wrong approval nonce must be rejected");
   });
 });
+
+// Phase 7 — forking into independent on-chain state. Wallet A (provider) owns a
+// parent strategy; Wallet B (a funded keypair) forks it, gets a new Strategy +
+// Rules PDA with a parent link, changes a rule on its fork, and Wallet A cannot
+// touch the fork.
+describe("stockweave-phase7 (forking)", () => {
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
+  const program = anchor.workspace.Stockweave as Program<Stockweave>;
+  const walletA = provider.wallet; // parent creator
+  const walletB = anchor.web3.Keypair.generate(); // forker
+
+  const parentId = `p7-parent-${Date.now()}`;
+  const forkId = `p7-fork-${Date.now()}`;
+
+  const [parentPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("strategy"), walletA.publicKey.toBuffer(), Buffer.from(parentId)],
+    program.programId
+  );
+  const [parentRulesPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("rules"), parentPda.toBuffer()],
+    program.programId
+  );
+  const [forkPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("strategy"), walletB.publicKey.toBuffer(), Buffer.from(forkId)],
+    program.programId
+  );
+  const [forkRulesPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("rules"), forkPda.toBuffer()],
+    program.programId
+  );
+
+  const RULES = {
+    reserveWeightBps: 1000,
+    rebalanceDriftBps: 500,
+    maxSingleAssetWeightBps: 3500,
+    maxTradeNotional: new anchor.BN(50),
+    maxDailyNotional: new anchor.BN(200),
+    maxPriceAgeSeconds: new anchor.BN(30),
+    referenceFeedId: Array(32).fill(1),
+  };
+
+  it("sets up Wallet A's parent strategy + rules and funds Wallet B", async () => {
+    await program.methods
+      .initializeStrategy(parentId)
+      .accounts({ strategy: parentPda, creator: walletA.publicKey })
+      .rpc();
+    await program.methods
+      .setRules(RULES)
+      .accounts({ strategy: parentPda, rules: parentRulesPda, creator: walletA.publicKey })
+      .rpc();
+    const fundTx = new anchor.web3.Transaction().add(
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: walletA.publicKey,
+        toPubkey: walletB.publicKey,
+        lamports: 50_000_000,
+      })
+    );
+    await provider.sendAndConfirm(fundTx);
+  });
+
+  it("Wallet B forks Wallet A's strategy into independent state", async () => {
+    const sig = await program.methods
+      .forkStrategy(forkId)
+      .accounts({
+        parentStrategy: parentPda,
+        parentRules: parentRulesPda,
+        forkStrategy: forkPda,
+        forkRules: forkRulesPda,
+        creator: walletB.publicKey,
+      })
+      .signers([walletB])
+      .rpc();
+    console.log("fork_strategy:", sig);
+    const fork = await program.account.strategy.fetch(forkPda);
+    assert.equal(fork.creator.toBase58(), walletB.publicKey.toBase58());
+    assert.equal(fork.parentStrategy.toBase58(), parentPda.toBase58());
+    const forkRules = await program.account.rules.fetch(forkRulesPda);
+    assert.equal(forkRules.version.toNumber(), 1);
+    assert.equal(forkRules.maxSingleAssetWeightBps, 3500); // copied from parent
+  });
+
+  it("Wallet B can change a rule on its fork", async () => {
+    const sig = await program.methods
+      .setRules({ ...RULES, rebalanceDriftBps: 300 })
+      .accounts({ strategy: forkPda, rules: forkRulesPda, creator: walletB.publicKey })
+      .signers([walletB])
+      .rpc();
+    console.log("fork set_rules (B):", sig);
+    const forkRules = await program.account.rules.fetch(forkRulesPda);
+    assert.equal(forkRules.rebalanceDriftBps, 300);
+    assert.equal(forkRules.version.toNumber(), 2);
+  });
+
+  it("Wallet A cannot control Wallet B's fork", async () => {
+    let failed = false;
+    try {
+      await program.methods
+        .setRules({ ...RULES, rebalanceDriftBps: 100 })
+        .accounts({ strategy: forkPda, rules: forkRulesPda, creator: walletA.publicKey })
+        .rpc();
+    } catch (e) {
+      failed = true;
+      console.log("parent-owner cannot edit fork:", e.toString().slice(0, 160));
+    }
+    assert.ok(failed, "Wallet A must not control Wallet B's fork");
+  });
+});

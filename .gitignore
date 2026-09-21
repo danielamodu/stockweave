@@ -1,0 +1,25 @@
+# Rust / Anchor build output — ignore everything under target EXCEPT the
+# hand-maintained IDL + TS types (the anchor IDL sub-build is blocked by the
+# ark-bn254 MontFp bug, so these are treated as source, not build output).
+/target/*
+!/target/idl/
+!/target/types/
+**/*.rs.bk
+*.rlib
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Secrets — never commit keypairs or API keys
+.env
+.env.*
+*.solana-wallet.json
+**/id.json
+**/*-keypair.json
+sw-buffer.json
+buffer.json
+
+# OS / editor
+.DS_Store
+*.swp

@@ -1,0 +1,15 @@
+{
+  "phase": 7,
+  "status": "PASS",
+  "fork_strategy_signature": "7secvXc3otw9rpvp7mt4TQQYyfc9QyrbtiktwcEKpJedwMDuzTeQAAyGpoiH8FxrYNSRq2SZUEDPnn5WtsLdjkF",
+  "fork_strategy_tx": "7secvXc3otw9rpvp7mt4TQQYyfc9QyrbtiktwcEKpJedwMDuzTeQAAyGpoiH8FxrYNSRq2SZUEDPnn5WtsLdjkF",
+  "parent_strategy": "AtUXprHpwrcGLt8Kjks6jFeSihftbbVep4KXGYSjBESo",
+  "fork_strategy": "4NQrZK4qxbjVb386ms5XxBk9coYwTqF6qn4SQoMFwVwt",
+  "fork_creator": "BVj3o8D65gjzPL1VWzzbY7NqTN5RT5xxWYBfdum8Di5L",
+  "parent_creator": "3jNEVjYZtMKHShfPLmS7tH8oKNngd42bU3sX7AJ1yxQD",
+  "parent_isolation_rejected": true,
+  "parent_isolation_tx": "J28A28V7TPbD3xHPrM9E7gyxTWV3LUp1HvsVtLQJYbwJkurfFKy9hc6FCLJ3atYNA2c7jcwxovmXTu3yXNHzfYd",
+  "deploy_program_id": "EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN",
+  "rpc": "https://devnet.helius-rpc.com/?api-key=<redacted>",
+  "timestamp": "2026-09-21T11:09:15.009Z"
+}

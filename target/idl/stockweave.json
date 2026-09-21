@@ -1,0 +1,1411 @@
+{
+  "version": "0.1.0",
+  "name": "stockweave",
+  "address": "EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN",
+  "metadata": {
+    "name": "stockweave",
+    "version": "0.1.0",
+    "spec": "3.0.0"
+  },
+  "instructions": [
+    {
+      "name": "initialize_strategy",
+      "discriminator": [
+        208,
+        119,
+        144,
+        145,
+        178,
+        57,
+        105,
+        252
+      ],
+      "accounts": [
+        {
+          "name": "strategy",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "writable": false,
+          "signer": false,
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "strategy_id",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "set_assets",
+      "discriminator": [
+        133,
+        157,
+        142,
+        223,
+        213,
+        231,
+        238,
+        228
+      ],
+      "accounts": [
+        {
+          "name": "strategy",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "asset",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "mint",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "writable": false,
+          "signer": false,
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "target_weight_bps",
+          "type": "u16"
+        },
+        {
+          "name": "max_weight_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "set_rules",
+      "discriminator": [
+        66,
+        148,
+        196,
+        43,
+        232,
+        210,
+        174,
+        169
+      ],
+      "accounts": [
+        {
+          "name": "strategy",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "rules",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "writable": false,
+          "signer": false,
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "rules",
+          "type": {
+            "defined": {
+              "name": "RuleSetParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "set_agent_permission",
+      "discriminator": [
+        109,
+        197,
+        145,
+        204,
+        128,
+        88,
+        53,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "strategy",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "agent",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "writable": false,
+          "signer": false,
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "allowed_actions",
+          "type": "u8"
+        },
+        {
+          "name": "max_notional_per_action",
+          "type": "u64"
+        },
+        {
+          "name": "max_daily_notional",
+          "type": "u64"
+        },
+        {
+          "name": "expiry",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "pause_strategy",
+      "discriminator": [
+        5,
+        152,
+        57,
+        45,
+        48,
+        169,
+        44,
+        247
+      ],
+      "accounts": [
+        {
+          "name": "strategy",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "revoke_agent",
+      "discriminator": [
+        227,
+        60,
+        209,
+        125,
+        240,
+        117,
+        163,
+        73
+      ],
+      "accounts": [
+        {
+          "name": "strategy",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "propose_rebalance",
+      "discriminator": [
+        11,
+        89,
+        222,
+        191,
+        238,
+        93,
+        94,
+        177
+      ],
+      "accounts": [
+        {
+          "name": "strategy",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "rules",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "permission",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "proposal",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "agent",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "writable": false,
+          "signer": false,
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "ProposeArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "approve_rebalance",
+      "discriminator": [
+        111,
+        92,
+        56,
+        1,
+        31,
+        237,
+        6,
+        246
+      ],
+      "accounts": [
+        {
+          "name": "strategy",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "proposal",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "approval_nonce",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "execute_rebalance",
+      "discriminator": [
+        36,
+        232,
+        110,
+        192,
+        96,
+        226,
+        100,
+        120
+      ],
+      "accounts": [
+        {
+          "name": "strategy",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "proposal",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "fork_strategy",
+      "discriminator": [
+        189,
+        124,
+        51,
+        106,
+        39,
+        45,
+        186,
+        13
+      ],
+      "accounts": [
+        {
+          "name": "parent_strategy",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "parent_rules",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "fork_strategy",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "fork_rules",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "writable": false,
+          "signer": false,
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_strategy_id",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Strategy",
+      "discriminator": [
+        174,
+        110,
+        39,
+        119,
+        82,
+        106,
+        169,
+        102
+      ],
+      "space": 174
+    },
+    {
+      "name": "Rules",
+      "discriminator": [
+        12,
+        186,
+        182,
+        174,
+        196,
+        165,
+        88,
+        15
+      ],
+      "space": 112
+    },
+    {
+      "name": "StrategyAsset",
+      "discriminator": [
+        24,
+        194,
+        2,
+        138,
+        13,
+        96,
+        102,
+        51
+      ],
+      "space": 78
+    },
+    {
+      "name": "AgentPermission",
+      "discriminator": [
+        1,
+        2,
+        244,
+        23,
+        75,
+        60,
+        23,
+        216
+      ],
+      "space": 164
+    },
+    {
+      "name": "RebalanceProposal",
+      "discriminator": [
+        144,
+        76,
+        53,
+        190,
+        165,
+        195,
+        179,
+        53
+      ],
+      "space": 191
+    }
+  ],
+  "types": [
+    {
+      "name": "StrategyStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Active"
+          },
+          {
+            "name": "Paused"
+          },
+          {
+            "name": "Archived"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProposalStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Proposed"
+          },
+          {
+            "name": "Approved"
+          },
+          {
+            "name": "Executed"
+          },
+          {
+            "name": "Rejected"
+          },
+          {
+            "name": "Expired"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RuleSetParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "reserve_weight_bps",
+            "type": "u16"
+          },
+          {
+            "name": "rebalance_drift_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_single_asset_weight_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_trade_notional",
+            "type": "u64"
+          },
+          {
+            "name": "max_daily_notional",
+            "type": "u64"
+          },
+          {
+            "name": "max_price_age_seconds",
+            "type": "u64"
+          },
+          {
+            "name": "reference_feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProposeArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proposal_id",
+            "type": "u64"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "new_target_weight_bps",
+            "type": "u16"
+          },
+          {
+            "name": "projected_reserve_bps",
+            "type": "u16"
+          },
+          {
+            "name": "notional",
+            "type": "u64"
+          },
+          {
+            "name": "reason_code",
+            "type": "u8"
+          },
+          {
+            "name": "oracle_feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "oracle_price",
+            "type": "i64"
+          },
+          {
+            "name": "oracle_publish_time",
+            "type": "i64"
+          },
+          {
+            "name": "approval_nonce",
+            "type": "u64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Strategy",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "strategy_id",
+            "type": "string"
+          },
+          {
+            "name": "parent_strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "rules_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Rules",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "reserve_weight_bps",
+            "type": "u16"
+          },
+          {
+            "name": "rebalance_drift_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_single_asset_weight_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_trade_notional",
+            "type": "u64"
+          },
+          {
+            "name": "max_daily_notional",
+            "type": "u64"
+          },
+          {
+            "name": "max_price_age_seconds",
+            "type": "u64"
+          },
+          {
+            "name": "reference_feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "require_user_approval",
+            "type": "bool"
+          },
+          {
+            "name": "version",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StrategyAsset",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "target_weight_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_weight_bps",
+            "type": "u16"
+          },
+          {
+            "name": "enabled",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AgentPermission",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "allowed_actions",
+            "type": "u8"
+          },
+          {
+            "name": "max_notional_per_action",
+            "type": "u64"
+          },
+          {
+            "name": "max_daily_notional",
+            "type": "u64"
+          },
+          {
+            "name": "expiry",
+            "type": "i64"
+          },
+          {
+            "name": "approval_required",
+            "type": "bool"
+          },
+          {
+            "name": "revoked",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RebalanceProposal",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal_id",
+            "type": "u64"
+          },
+          {
+            "name": "created_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "new_target_weight_bps",
+            "type": "u16"
+          },
+          {
+            "name": "projected_reserve_bps",
+            "type": "u16"
+          },
+          {
+            "name": "notional",
+            "type": "u64"
+          },
+          {
+            "name": "reason_code",
+            "type": "u8"
+          },
+          {
+            "name": "oracle_feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "oracle_price",
+            "type": "i64"
+          },
+          {
+            "name": "oracle_publish_time",
+            "type": "i64"
+          },
+          {
+            "name": "approval_nonce",
+            "type": "u64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StrategyCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "strategy_id",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RulesUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "version",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PermissionSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "allowed_actions",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StrategyPaused",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AgentRevoked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RebalanceProposed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal_id",
+            "type": "u64"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "new_target_weight_bps",
+            "type": "u16"
+          },
+          {
+            "name": "notional",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RebalanceApproved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal_id",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RebalanceExecuted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal_id",
+            "type": "u64"
+          },
+          {
+            "name": "new_target_weight_bps",
+            "type": "u16"
+          },
+          {
+            "name": "simulated",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StrategyForked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "parent",
+            "type": "pubkey"
+          },
+          {
+            "name": "fork",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Signer is not the strategy creator/authority."
+    },
+    {
+      "code": 6001,
+      "name": "StrategyPaused",
+      "msg": "Strategy is paused; protected actions are rejected."
+    },
+    {
+      "code": 6002,
+      "name": "BadStrategyId",
+      "msg": "Invalid strategy id."
+    },
+    {
+      "code": 6003,
+      "name": "BadRules",
+      "msg": "Rule parameters out of range."
+    },
+    {
+      "code": 6004,
+      "name": "BadPermission",
+      "msg": "Unknown permission action bits."
+    },
+    {
+      "code": 6005,
+      "name": "PermissionRevoked",
+      "msg": "Agent permission has been revoked."
+    },
+    {
+      "code": 6006,
+      "name": "PermissionExpired",
+      "msg": "Agent permission has expired."
+    },
+    {
+      "code": 6007,
+      "name": "ProposeNotAllowed",
+      "msg": "Agent lacks the PROPOSE grant."
+    },
+    {
+      "code": 6008,
+      "name": "WrongFeed",
+      "msg": "Oracle feed id does not match the strategy reference feed."
+    },
+    {
+      "code": 6009,
+      "name": "StaleOracle",
+      "msg": "Oracle price is stale."
+    },
+    {
+      "code": 6010,
+      "name": "MaxWeightExceeded",
+      "msg": "Proposed weight exceeds the maximum single-asset weight."
+    },
+    {
+      "code": 6011,
+      "name": "ReserveBreach",
+      "msg": "Projected reserve is below the minimum."
+    },
+    {
+      "code": 6012,
+      "name": "ExcessiveNotional",
+      "msg": "Trade notional exceeds a per-action limit."
+    },
+    {
+      "code": 6013,
+      "name": "ProposalExpired",
+      "msg": "Proposal is expired."
+    },
+    {
+      "code": 6014,
+      "name": "BadApprovalNonce",
+      "msg": "Approval nonce does not match the proposal."
+    },
+    {
+      "code": 6015,
+      "name": "BadProposalState",
+      "msg": "Proposal is not in the required state."
+    }
+  ],
+  "events": [
+    {
+      "name": "StrategyCreated",
+      "discriminator": [
+        182,
+        139,
+        220,
+        116,
+        163,
+        176,
+        161,
+        223
+      ],
+      "fields": [
+        {
+          "name": "strategy",
+          "type": "pubkey"
+        },
+        {
+          "name": "creator",
+          "type": "pubkey"
+        },
+        {
+          "name": "strategy_id",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "RulesUpdated",
+      "discriminator": [
+        100,
+        24,
+        7,
+        239,
+        176,
+        206,
+        193,
+        94
+      ],
+      "fields": [
+        {
+          "name": "strategy",
+          "type": "pubkey"
+        },
+        {
+          "name": "version",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "PermissionSet",
+      "discriminator": [
+        64,
+        75,
+        46,
+        254,
+        32,
+        126,
+        128,
+        37
+      ],
+      "fields": [
+        {
+          "name": "strategy",
+          "type": "pubkey"
+        },
+        {
+          "name": "agent",
+          "type": "pubkey"
+        },
+        {
+          "name": "allowed_actions",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "StrategyPaused",
+      "discriminator": [
+        201,
+        0,
+        61,
+        194,
+        171,
+        128,
+        201,
+        20
+      ],
+      "fields": [
+        {
+          "name": "strategy",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "AgentRevoked",
+      "discriminator": [
+        12,
+        251,
+        249,
+        166,
+        122,
+        83,
+        162,
+        116
+      ],
+      "fields": [
+        {
+          "name": "strategy",
+          "type": "pubkey"
+        },
+        {
+          "name": "agent",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "RebalanceProposed",
+      "discriminator": [
+        68,
+        109,
+        191,
+        92,
+        88,
+        209,
+        142,
+        88
+      ],
+      "fields": [
+        {
+          "name": "strategy",
+          "type": "pubkey"
+        },
+        {
+          "name": "proposal",
+          "type": "pubkey"
+        },
+        {
+          "name": "proposal_id",
+          "type": "u64"
+        },
+        {
+          "name": "mint",
+          "type": "pubkey"
+        },
+        {
+          "name": "new_target_weight_bps",
+          "type": "u16"
+        },
+        {
+          "name": "notional",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "RebalanceApproved",
+      "discriminator": [
+        49,
+        5,
+        229,
+        38,
+        11,
+        0,
+        140,
+        7
+      ],
+      "fields": [
+        {
+          "name": "strategy",
+          "type": "pubkey"
+        },
+        {
+          "name": "proposal",
+          "type": "pubkey"
+        },
+        {
+          "name": "proposal_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "RebalanceExecuted",
+      "discriminator": [
+        194,
+        41,
+        129,
+        249,
+        215,
+        226,
+        122,
+        248
+      ],
+      "fields": [
+        {
+          "name": "strategy",
+          "type": "pubkey"
+        },
+        {
+          "name": "proposal",
+          "type": "pubkey"
+        },
+        {
+          "name": "proposal_id",
+          "type": "u64"
+        },
+        {
+          "name": "new_target_weight_bps",
+          "type": "u16"
+        },
+        {
+          "name": "simulated",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "StrategyForked",
+      "discriminator": [
+        60,
+        180,
+        203,
+        128,
+        23,
+        186,
+        173,
+        193
+      ],
+      "fields": [
+        {
+          "name": "parent",
+          "type": "pubkey"
+        },
+        {
+          "name": "fork",
+          "type": "pubkey"
+        },
+        {
+          "name": "creator",
+          "type": "pubkey"
+        }
+      ]
+    }
+  ]
+}

@@ -4,3 +4,9 @@
 [workspace]
 members = ["programs/*"]
 resolver = "2"
+
+# Overflow checks in release builds — required by Anchor and appropriate for a
+# program handling weights/notional math (wrapping arithmetic would be a bug,
+# not a silent truncation). Enabled for the local WSL toolchain build.
+[profile.release]
+overflow-checks = true

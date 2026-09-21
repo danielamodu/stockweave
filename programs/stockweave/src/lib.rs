@@ -20,7 +20,7 @@ use anchor_lang::prelude::*;
 // Deployed on Devnet via Solana Playground; verified on-chain 2026-09-19
 // (owner BPFLoaderUpgradeab1e11111111111111111111111, executable=true).
 // This address is the program's identity — do not change it.
-declare_id!("2z9QVsHonA4QcZkwLAcb1P5BGyrTL9UYUrE45TrmqC2a");
+declare_id!("EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN");
 
 #[program]
 pub mod stockweave {
@@ -294,6 +294,65 @@ pub mod stockweave {
         });
         Ok(())
     }
+
+    /// Phase 7 — fork a public strategy into INDEPENDENT on-chain state. The
+    /// caller becomes the fork's sole creator/authority; the fork records its
+    /// parent and copies the parent's rule template into its own Rules PDA
+    /// (version reset to 1). The parent's creator has no authority over the
+    /// fork, and the fork's agent/permissions/assets are set up fresh by the
+    /// new owner (D-701). A copied frontend object is not a fork — this creates
+    /// new PDAs owned by a new wallet.
+    pub fn fork_strategy(ctx: Context<ForkStrategy>, new_strategy_id: String) -> Result<()> {
+        require!(
+            new_strategy_id.len() > 0 && new_strategy_id.len() <= 64,
+            StockWeaveError::BadStrategyId
+        );
+        let parent_key = ctx.accounts.parent_strategy.key();
+        let creator_key = ctx.accounts.creator.key();
+        let pr = &ctx.accounts.parent_rules;
+        // Snapshot parent rule values before mutably borrowing the fork rules.
+        let (reserve, drift, max_w, max_trade, max_daily, max_age, feed) = (
+            pr.reserve_weight_bps,
+            pr.rebalance_drift_bps,
+            pr.max_single_asset_weight_bps,
+            pr.max_trade_notional,
+            pr.max_daily_notional,
+            pr.max_price_age_seconds,
+            pr.reference_feed_id,
+        );
+
+        let fork = &mut ctx.accounts.fork_strategy;
+        fork.creator = creator_key;
+        fork.strategy_id = new_strategy_id;
+        fork.parent_strategy = parent_key;
+        fork.status = StrategyStatus::Active as u8;
+        fork.rules_hash = [0u8; 32];
+        fork.bump = ctx.bumps.fork_strategy;
+        let fork_key = fork.key();
+
+        let fr = &mut ctx.accounts.fork_rules;
+        fr.strategy = fork_key;
+        fr.reserve_weight_bps = reserve;
+        fr.rebalance_drift_bps = drift;
+        fr.max_single_asset_weight_bps = max_w;
+        fr.max_trade_notional = max_trade;
+        fr.max_daily_notional = max_daily;
+        fr.max_price_age_seconds = max_age;
+        fr.reference_feed_id = feed;
+        fr.require_user_approval = true;
+        fr.version = 1;
+        fr.bump = ctx.bumps.fork_rules;
+
+        // Bind the fork to its own (independent) rule-set account.
+        ctx.accounts.fork_strategy.rules_hash = fork_key.to_bytes();
+
+        emit!(StrategyForked {
+            parent: parent_key,
+            fork: fork_key,
+            creator: creator_key,
+        });
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +614,38 @@ pub struct ExecuteRebalance<'info> {
     pub creator: Signer<'info>,
 }
 
+#[derive(Accounts)]
+#[instruction(new_strategy_id: String)]
+pub struct ForkStrategy<'info> {
+    // Parent (read-only source). Any wallet may fork a public strategy.
+    pub parent_strategy: Account<'info, Strategy>,
+    #[account(
+        seeds = [b"rules", parent_strategy.key().as_ref()],
+        bump = parent_rules.bump
+    )]
+    pub parent_rules: Account<'info, Rules>,
+    // The fork: a brand-new Strategy PDA owned by the caller.
+    #[account(
+        init,
+        payer = creator,
+        space = 8 + 32 + (4 + 64) + 32 + 1 + 32 + 1,
+        seeds = [b"strategy", creator.key().as_ref(), new_strategy_id.as_bytes()],
+        bump
+    )]
+    pub fork_strategy: Account<'info, Strategy>,
+    #[account(
+        init,
+        payer = creator,
+        space = 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 32 + 1 + 8 + 1,
+        seeds = [b"rules", fork_strategy.key().as_ref()],
+        bump
+    )]
+    pub fork_rules: Account<'info, Rules>,
+    #[account(mut)]
+    pub creator: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
@@ -614,6 +705,13 @@ pub struct RebalanceExecuted {
     pub proposal_id: u64,
     pub new_target_weight_bps: u16,
     pub simulated: bool,
+}
+
+#[event]
+pub struct StrategyForked {
+    pub parent: Pubkey,
+    pub fork: Pubkey,
+    pub creator: Pubkey,
 }
 
 #[error_code]

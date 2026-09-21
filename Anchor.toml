@@ -1,19 +1,17 @@
-# StockWeave Anchor workspace (source of truth for browser Playground runs).
-# Program ID verified on Devnet 2026-09-19 (executable, BPF upgradeable loader).
-# No Solana toolchain is required on the local PC.
+[toolchain]
 
 [features]
-seeds = false
+resolution = true
 skip-lint = false
 
 [programs.devnet]
-stockweave = "2z9QVsHonA4QcZkwLAcb1P5BGyrTL9UYUrE45TrmqC2a"
+stockweave = "EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN"
 
 [registry]
 url = "https://api.apr-1.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "Devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

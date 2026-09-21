@@ -1,5 +1,9 @@
 # StockWeave Decision Log
 
+## Phase 7 (2026-09-19)
+
+- D-701: `fork_strategy(new_strategy_id)` creates INDEPENDENT on-chain state in one instruction: a new Strategy PDA (caller = sole creator, `parent_strategy` = source) + a new Rules PDA that COPIES the parent's rule template (version reset to 1). Authority isolation is automatic — every guard checks the fork's own `creator` (`has_one`), so the parent's owner has zero control over the fork. Scope decision: assets/agent-permissions are re-registered on the fork by the new owner (who has authority) rather than bulk-copied in `fork_strategy`, to keep the instruction bounded (no variable-length remaining_accounts). This still satisfies the Phase 7 gate (independent state + authority; fork owner changes a rule; parent cannot). Rejected: copying N asset PDAs in one instruction (unbounded) and copying the agent authority (would violate fork independence).
+
 ## Phase 6 (2026-09-19)
 
 - D-601: Clawpump agent implemented as a DETERMINISTIC constrained proposer in `lib/agent.js`. It consumes the rules-engine classification + on-chain-mirrored permission and returns structured output (state, reasonCodes, summary, action, trades, requiresApproval). It never decides numeric limits/weight-validity/oracle-freshness (rules engine does) and never returns EXECUTE. The plain-language `summary` is a TEMPLATE over the real numbers — NOT fabricated LLM prose. A real LLM/Clawpump-platform/MCP binding is a documented seam (the `decide()` input/output contract); it is not faked. Rejected: inventing a Clawpump SDK/agent id (see D-006 — Clawpump IDs still TBD) or claiming an LLM call we don't make.
