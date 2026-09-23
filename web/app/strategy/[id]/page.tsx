@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { GridPlus } from "@/components/blueprint";
 import { AssetTile } from "@/components/asset-logo";
 import { Skeleton } from "@/components/skeleton";
+import { MainnetAssets } from "@/components/mainnet-assets";
 import {
   readOfficialStrategy,
   forkOfficialStrategy,
@@ -307,6 +308,9 @@ function StrategyView() {
               </table>
             </div>
           </section>
+
+          {/* real tokenized-stock grounding — live mainnet mint facts */}
+          <MainnetAssets symbols={weightOrder} />
 
           {/* rules + agent */}
           <section className="mt-6 grid gap-4 lg:grid-cols-2">

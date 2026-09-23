@@ -120,8 +120,9 @@ npm test    # phase + basket tests
 | `ANCHOR_WALLET` | seed script | Path to the deploy/creator keypair. |
 | `HELIUS_RPC` · `ANCHOR_PROVIDER_URL` · `AGENT_RPC` | seed · agent | Optional Devnet RPC override (defaults to the public Devnet endpoint). |
 | `NAV_ROUNDS` · `NAV_INTERVAL_MS` | keeper | Optional — how many NAV snapshots `tests/record-nav.js` appends per run (default 1) and the delay between them (default 3000 ms). |
+| `MAINNET_RPC` | `/api/mainnet-assets` (server) | Optional mainnet RPC for the real tokenized-stock grounding read (defaults to the public `mainnet-beta` endpoint, which is rate-limited — set this to a reliable endpoint if the panel keeps degrading). Read-only; no keys are ever sent to the browser. |
 
-The browser wallet connection is fixed to Solana Devnet (`clusterApiUrl("devnet")`).
+The browser wallet connection is fixed to Solana Devnet (`clusterApiUrl("devnet")`). Separately, the strategy page reads the **real** PreStocks mints' live state from Solana **mainnet** server-side (`/api/mainnet-assets`) to prove each basket points at the genuine on-chain token — identity/facts only; all transactions stay on the Devnet mirror.
 
 ---
 

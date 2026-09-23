@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useDashboard } from "@/components/dashboard/context";
 import { Card, Holdings, Label, MixBar, StatCell, StatRow, fmtUsd, ChangeBadge } from "@/components/dashboard/ui";
 import { Skeleton } from "@/components/skeleton";
+import { MainnetAssets } from "@/components/mainnet-assets";
 
 export default function HoldingsPage() {
   const d = useDashboard();
@@ -66,6 +67,9 @@ export default function HoldingsPage() {
           </div>
         )}
       </Card>
+
+      {/* real tokenized-stock grounding — the live mainnet mints behind this mix */}
+      {hasMix && <MainnetAssets symbols={d.order} />}
     </div>
   );
 }
