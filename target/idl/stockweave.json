@@ -374,12 +374,67 @@
           "signer": false
         },
         {
+          "name": "asset",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "asset_mint",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "usdc_mint",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "vault",
+          "writable": false,
+          "signer": false
+        },
+        {
           "name": "creator",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "creator_asset_ata",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "creator_usdc_ata",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "treasury_usdc_ata",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "token_program",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "associated_token_program",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "system_program",
+          "writable": false,
+          "signer": false
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "asset_qty",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "fork_strategy",
@@ -1052,6 +1107,14 @@
           {
             "name": "simulated",
             "type": "bool"
+          },
+          {
+            "name": "asset_burned",
+            "type": "u64"
+          },
+          {
+            "name": "usdc_returned",
+            "type": "u64"
           }
         ]
       }
@@ -1377,6 +1440,14 @@
         {
           "name": "simulated",
           "type": "bool"
+        },
+        {
+          "name": "asset_burned",
+          "type": "u64"
+        },
+        {
+          "name": "usdc_returned",
+          "type": "u64"
         }
       ]
     },

@@ -10,15 +10,17 @@
 //! until the creator approves it with the exact approval nonce. Oracle freshness
 //! is enforced on-chain against the cluster Clock using a caller-supplied
 //! snapshot (feed_id/price/publish_time); price authenticity is enforced
-//! off-chain (see D-502). execute_rebalance is SIMULATE-only (D-503).
+//! off-chain (see D-502). execute_rebalance moved from SIMULATE-only (D-503) to a
+//! REAL Devnet-mirror trim in Stage 7 (D-702): it burns the trimmed mirror asset
+//! from the creator and returns the proposal's notional USDC from the treasury.
 //!
-//! DEPLOYED: Devnet program 2z9QVsHonA4QcZkwLAcb1P5BGyrTL9UYUrE45TrmqC2a,
-//! verified on-chain 2026-09-19 (executable, BPF upgradeable loader).
+//! DEPLOYED: Devnet program EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN
+//! (BPF upgradeable loader). See docs/checkpoints + tests/*-evidence.json.
 
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Mint, MintTo, Token, TokenAccount, Transfer},
+    token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer},
 };
 use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, PriceUpdateV2};
 
@@ -275,27 +277,77 @@ pub mod stockweave {
         Ok(())
     }
 
-    /// Simulate execution of an approved proposal (D-503: no custody/real swaps).
-    /// Rejected unless the proposal is Approved, unexpired, and the strategy is
-    /// active. Records the executed state and emits the lifecycle event.
-    pub fn execute_rebalance(ctx: Context<ExecuteRebalance>) -> Result<()> {
+    /// Execute an approved trim on Devnet's mirror world (Stage 7 — reopens D-503
+    /// for Devnet, see D-702). The approved proposal trims an overweight asset back
+    /// into cash: the program BURNS `asset_qty` of the asset's mirror token from the
+    /// creator (creator authority signs) and RETURNS the proposal's `notional` (whole
+    /// USDC) from the strategy treasury to the creator (vault PDA signs). Atomic:
+    /// shares out, cash in. Rejected unless the proposal is Approved, unexpired, its
+    /// mint matches the account, and the strategy is active. Creator-only — the agent
+    /// is never a signer here. `asset_qty` is sized off-chain from the live price;
+    /// the USDC leg is fixed by the on-chain `notional`, so the treasury can only ever
+    /// pay out the amount the proposal was guarded against.
+    pub fn execute_rebalance(ctx: Context<ExecuteRebalance>, asset_qty: u64) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
         let strategy_key = ctx.accounts.strategy.key();
         require!(
             ctx.accounts.strategy.status != StrategyStatus::Paused as u8,
             StockWeaveError::StrategyPaused
         );
+        require!(asset_qty > 0, StockWeaveError::BadExecuteAmount);
+        {
+            let proposal = &ctx.accounts.proposal;
+            require!(proposal.strategy == strategy_key, StockWeaveError::Unauthorized);
+            require!(proposal.status == ProposalStatus::Approved as u8, StockWeaveError::BadProposalState);
+            require!(now <= proposal.expires_at, StockWeaveError::ProposalExpired);
+            require!(proposal.mint == ctx.accounts.asset_mint.key(), StockWeaveError::Unauthorized);
+        }
+        // Notional is stored in whole USDC; the mirror USDC mint is 6 dp (seeded).
+        let usdc_out = ctx
+            .accounts
+            .proposal
+            .notional
+            .checked_mul(1_000_000)
+            .ok_or(StockWeaveError::ExcessiveNotional)?;
+
+        // 1) Burn the trimmed mirror asset from the creator (creator signs).
+        token::burn(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Burn {
+                    mint: ctx.accounts.asset_mint.to_account_info(),
+                    from: ctx.accounts.creator_asset_ata.to_account_info(),
+                    authority: ctx.accounts.creator.to_account_info(),
+                },
+            ),
+            asset_qty,
+        )?;
+        // 2) Return USDC from the strategy treasury to the creator (vault PDA signs).
+        let bump = ctx.bumps.vault;
+        let seeds: &[&[u8]] = &[b"vault", &[bump]];
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.treasury_usdc_ata.to_account_info(),
+                    to: ctx.accounts.creator_usdc_ata.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                &[seeds],
+            ),
+            usdc_out,
+        )?;
+
         let proposal = &mut ctx.accounts.proposal;
-        require!(proposal.strategy == strategy_key, StockWeaveError::Unauthorized);
-        require!(proposal.status == ProposalStatus::Approved as u8, StockWeaveError::BadProposalState);
-        require!(now <= proposal.expires_at, StockWeaveError::ProposalExpired);
         proposal.status = ProposalStatus::Executed as u8;
         emit!(RebalanceExecuted {
             strategy: strategy_key,
             proposal: proposal.key(),
             proposal_id: proposal.proposal_id,
             new_target_weight_bps: proposal.new_target_weight_bps,
-            simulated: true,
+            simulated: false,
+            asset_burned: asset_qty,
+            usdc_returned: usdc_out,
         });
         Ok(())
     }
@@ -707,15 +759,56 @@ pub struct ApproveRebalance<'info> {
 
 #[derive(Accounts)]
 pub struct ExecuteRebalance<'info> {
+    // Boxed to keep try_accounts' generated stack frame under the 4KB SBF limit
+    // (two token accounts + two mints + init_if_needed would overflow it unboxed).
     #[account(has_one = creator)]
-    pub strategy: Account<'info, Strategy>,
+    pub strategy: Box<Account<'info, Strategy>>,
     #[account(
         mut,
         seeds = [b"proposal", strategy.key().as_ref(), proposal.proposal_id.to_le_bytes().as_ref()],
         bump = proposal.bump
     )]
-    pub proposal: Account<'info, RebalanceProposal>,
+    pub proposal: Box<Account<'info, RebalanceProposal>>,
+    // Binds the proposal's asset mint to this strategy — a trim can only ever burn
+    // an asset that genuinely belongs to the strategy being rebalanced.
+    #[account(
+        seeds = [b"asset", strategy.key().as_ref(), asset_mint.key().as_ref()],
+        bump = asset.bump,
+        constraint = asset.strategy == strategy.key() @ StockWeaveError::Unauthorized,
+    )]
+    pub asset: Box<Account<'info, StrategyAsset>>,
+    #[account(mut)]
+    pub asset_mint: Box<Account<'info, Mint>>,
+    pub usdc_mint: Box<Account<'info, Mint>>,
+    /// CHECK: program vault PDA — USDC treasury owner. CPI signer only.
+    #[account(seeds = [b"vault"], bump)]
+    pub vault: UncheckedAccount<'info>,
+    #[account(mut)]
     pub creator: Signer<'info>,
+    // The creator's own mirror-asset account — burned from. Must already exist
+    // (you can only trim an asset you hold).
+    #[account(
+        mut,
+        associated_token::mint = asset_mint,
+        associated_token::authority = creator,
+    )]
+    pub creator_asset_ata: Box<Account<'info, TokenAccount>>,
+    #[account(
+        init_if_needed,
+        payer = creator,
+        associated_token::mint = usdc_mint,
+        associated_token::authority = creator,
+    )]
+    pub creator_usdc_ata: Box<Account<'info, TokenAccount>>,
+    #[account(
+        mut,
+        associated_token::mint = usdc_mint,
+        associated_token::authority = vault,
+    )]
+    pub treasury_usdc_ata: Box<Account<'info, TokenAccount>>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -883,6 +976,8 @@ pub struct RebalanceExecuted {
     pub proposal_id: u64,
     pub new_target_weight_bps: u16,
     pub simulated: bool,
+    pub asset_burned: u64,
+    pub usdc_returned: u64,
 }
 
 #[event]
@@ -950,4 +1045,6 @@ pub enum StockWeaveError {
     BadSubscription,
     #[msg("Asset is disabled for this strategy.")]
     AssetDisabled,
+    #[msg("Execute amount (asset quantity to trim) must be positive.")]
+    BadExecuteAmount,
 }
