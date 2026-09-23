@@ -124,5 +124,21 @@ export interface AssetPrice {
   "bump": number;
 }
 
+export interface NavPoint {
+  "ts": anchor.BN;
+  "navU": anchor.BN;
+}
+
+export interface NavHistory {
+  "strategy": anchor.web3.PublicKey;
+  "authority": anchor.web3.PublicKey;
+  "count": anchor.BN;
+  "head": number;
+  "pad0": number[];
+  "points": NavPoint[];
+  "bump": number;
+  "pad1": number[];
+}
+
 export type StockweaveProgram = Program<typeof IDL>;
 export { IDL as StockweaveIDL };

@@ -544,6 +544,24 @@
           "type": "string"
         }
       ]
+    },
+    {
+      "name": "record_nav",
+      "discriminator": [12, 39, 195, 29, 234, 54, 160, 24],
+      "accounts": [
+        { "name": "strategy", "writable": false, "signer": false },
+        { "name": "nav_history", "writable": true, "signer": false },
+        { "name": "creator", "writable": true, "signer": true },
+        {
+          "name": "system_program",
+          "writable": false,
+          "signer": false,
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        { "name": "nav_u", "type": "u64" }
+      ]
     }
   ],
   "accounts": [
@@ -630,6 +648,11 @@
         245
       ],
       "space": 89
+    },
+    {
+      "name": "NavHistory",
+      "discriminator": [40, 139, 233, 237, 46, 197, 105, 74],
+      "space": 2144
     }
   ],
   "types": [
@@ -1047,6 +1070,39 @@
       }
     },
     {
+      "name": "NavPoint",
+      "serialization": "bytemuck",
+      "repr": { "kind": "c" },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "ts", "type": "i64" },
+          { "name": "nav_u", "type": "u64" }
+        ]
+      }
+    },
+    {
+      "name": "NavHistory",
+      "serialization": "bytemuck",
+      "repr": { "kind": "c" },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "strategy", "type": "pubkey" },
+          { "name": "authority", "type": "pubkey" },
+          { "name": "count", "type": "u64" },
+          { "name": "head", "type": "u32" },
+          { "name": "_pad0", "type": { "array": ["u8", 4] } },
+          {
+            "name": "points",
+            "type": { "array": [{ "defined": { "name": "NavPoint" } }, 128] }
+          },
+          { "name": "bump", "type": "u8" },
+          { "name": "_pad1", "type": { "array": ["u8", 7] } }
+        ]
+      }
+    },
+    {
       "name": "StrategyCreated",
       "type": {
         "kind": "struct",
@@ -1261,6 +1317,18 @@
           }
         ]
       }
+    },
+    {
+      "name": "NavRecorded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "strategy", "type": "pubkey" },
+          { "name": "ts", "type": "i64" },
+          { "name": "nav_u", "type": "u64" },
+          { "name": "count", "type": "u64" }
+        ]
+      }
     }
   ],
   "errors": [
@@ -1383,6 +1451,11 @@
       "code": 6023,
       "name": "PriceOutOfBounds",
       "msg": "Trade quantity does not honor the published price within tolerance."
+    },
+    {
+      "code": 6024,
+      "name": "BadNav",
+      "msg": "NAV value must be positive."
     }
   ],
   "events": [
@@ -1670,6 +1743,16 @@
           "name": "updated_at",
           "type": "i64"
         }
+      ]
+    },
+    {
+      "name": "NavRecorded",
+      "discriminator": [179, 233, 255, 237, 230, 204, 165, 66],
+      "fields": [
+        { "name": "strategy", "type": "pubkey" },
+        { "name": "ts", "type": "i64" },
+        { "name": "nav_u", "type": "u64" },
+        { "name": "count", "type": "u64" }
       ]
     }
   ]

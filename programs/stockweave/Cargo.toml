@@ -30,3 +30,8 @@ pyth-solana-receiver-sdk = "0.6.1"
 # Must match anchor-lang's minor (0.30.1). If the Solana toolchain conflicts,
 # the same version ladder as anchor-lang applies; keep both on 0.30.1.
 anchor-spl = "0.30.1"
+# Stage 9 — on-chain NAV ring buffer (NavHistory is zero_copy). anchor 0.30.1's
+# #[zero_copy] macro emits `bytemuck::` paths, so the crate must be in scope.
+# `min_const_generics` makes `[NavPoint; 128]` satisfy Pod; `derive` supplies the
+# Pod/Zeroable derives the macro uses.
+bytemuck = { version = "1.16.3", features = ["derive", "min_const_generics"] }

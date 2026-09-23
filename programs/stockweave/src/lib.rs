@@ -44,6 +44,17 @@ const PRICE_TOLERANCE_BPS: u128 = 100; // 1% — covers rounding + minor drift.
 // tighten this and republish continuously.
 const ASSET_PRICE_MAX_AGE_SECONDS: i64 = 86_400; // 24h
 
+// --- Live NAV track record (proof-of-return, on-chain) ---------------------
+// A keeper records each strategy's live-priced NAV into an on-chain ring buffer
+// (NavHistory PDA, seeds [b"nav", strategy]) so the demo shows a REAL,
+// un-fabricated performance history that accumulates from launch. There is no
+// backfill: pre-IPO mirror assets have no honest price history to backtest on
+// (the live source is spot-only), so the honest proof is forward-tracked. nav_u
+// is the target-weight basket's value in USDC micro-units (6 dp), computed
+// off-chain from the SAME live prices the keeper publishes via set_asset_price;
+// the UI rebases to the first point for a since-launch return.
+const NAV_CAPACITY: usize = 128; // ring slots (~4 months of daily snapshots).
+
 // True when `actual` is within `bps` of `expected` (same base units). Guards
 // expected == 0 (an unpublished/zero price can never validate a quantity).
 fn within_tolerance(actual: u128, expected: u128, bps: u128) -> bool {
@@ -617,6 +628,51 @@ pub mod stockweave {
         });
         Ok(())
     }
+
+    /// Record one live-priced NAV snapshot into the strategy's on-chain history
+    /// ring buffer (proof-of-return). Creator/keeper-signed — the agent never
+    /// records. `nav_u` is the target-weight basket's value in USDC micro-units
+    /// (6 dp), computed off-chain from the same live prices the keeper publishes
+    /// via set_asset_price: a real measured value, never fabricated. Starts empty
+    /// at launch and accumulates honestly (no backfill); the ring overwrites the
+    /// oldest slot once NAV_CAPACITY snapshots exist. The UI rebases to the first
+    /// point for a since-launch return.
+    pub fn record_nav(ctx: Context<RecordNav>, nav_u: u64) -> Result<()> {
+        require!(nav_u > 0, StockWeaveError::BadNav);
+        let now = Clock::get()?.unix_timestamp;
+        let strategy_key = ctx.accounts.strategy.key();
+        let creator = ctx.accounts.creator.key();
+        let count;
+        {
+            // zero_copy: work the 2KB ring in place (a plain deserialize overflows
+            // the SBF stack). init_if_needed leaves a fresh account's discriminator
+            // zero, so load_init() succeeds and stamps it on first touch; on later
+            // calls load_init() errors (already set) and we load_mut().
+            let mut nav = match ctx.accounts.nav_history.load_init() {
+                Ok(mut n) => {
+                    n.strategy = strategy_key;
+                    n.authority = creator;
+                    n.bump = ctx.bumps.nav_history;
+                    n
+                }
+                Err(_) => ctx.accounts.nav_history.load_mut()?,
+            };
+            let slot = (nav.count % NAV_CAPACITY as u64) as usize;
+            nav.points[slot] = NavPoint { ts: now, nav_u };
+            nav.count = nav.count.saturating_add(1);
+            // head = index of the oldest live point (== next slot to overwrite once
+            // the ring is full); readers unwrap oldest→newest from here.
+            nav.head = (nav.count % NAV_CAPACITY as u64) as u32;
+            count = nav.count;
+        }
+        emit!(NavRecorded {
+            strategy: strategy_key,
+            ts: now,
+            nav_u,
+            count,
+        });
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -679,6 +735,37 @@ pub struct AssetPrice {
     pub price_u: u64,
     pub updated_at: i64,
     pub bump: u8,
+}
+
+// One live-priced NAV snapshot: unix seconds + basket value in USDC micro-units.
+// zero_copy (bytemuck Pod): 16 bytes, no padding.
+#[zero_copy]
+pub struct NavPoint {
+    pub ts: i64,
+    pub nav_u: u64,
+}
+
+// On-chain ring buffer of NAV snapshots for one strategy (proof-of-return,
+// seeds [b"nav", strategy]). `count` is the monotonic total ever recorded;
+// `head` is the oldest live slot (== next to overwrite once full). A reader with
+// count <= NAV_CAPACITY takes points[0..count]; once wrapped it reads
+// NAV_CAPACITY points in ring order starting at `head` (oldest → newest).
+//
+// zero_copy: the 2KB `points` array is worked in place via AccountLoader, so it
+// never lands on the SBF stack (a plain Account<T> deserialize overflows the 4KB
+// frame). Explicit _pad fields keep the layout free of implicit padding so it is
+// bytemuck-Pod. Byte layout (after the 8-byte disc): strategy@0, authority@32,
+// count@64, head@72, _pad0@76, points@80, bump@2128, _pad1@2129; data size 2136.
+#[account(zero_copy)]
+pub struct NavHistory {
+    pub strategy: Pubkey,
+    pub authority: Pubkey,
+    pub count: u64,
+    pub head: u32,
+    pub _pad0: [u8; 4],
+    pub points: [NavPoint; NAV_CAPACITY],
+    pub bump: u8,
+    pub _pad1: [u8; 7],
 }
 
 #[account]
@@ -807,6 +894,27 @@ pub struct SetAssetPrice<'info> {
         bump
     )]
     pub asset_price: Account<'info, AssetPrice>,
+    #[account(mut)]
+    pub creator: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RecordNav<'info> {
+    #[account(has_one = creator)]
+    pub strategy: Account<'info, Strategy>,
+    // zero_copy + AccountLoader: the ~2KB ring never lands on the SBF stack (a
+    // plain Account<T> deserialize overflows the 4KB frame). space = 8 disc + the
+    // struct's byte layout (strategy 32 + authority 32 + count 8 + head 4 + _pad0
+    // 4 + points 16*NAV_CAPACITY + bump 1 + _pad1 7); = 2144 at NAV_CAPACITY 128.
+    #[account(
+        init_if_needed,
+        payer = creator,
+        space = 8 + 32 + 32 + 8 + 4 + 4 + (16 * NAV_CAPACITY) + 1 + 7,
+        seeds = [b"nav", strategy.key().as_ref()],
+        bump
+    )]
+    pub nav_history: AccountLoader<'info, NavHistory>,
     #[account(mut)]
     pub creator: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -1174,6 +1282,14 @@ pub struct AssetPriceSet {
     pub updated_at: i64,
 }
 
+#[event]
+pub struct NavRecorded {
+    pub strategy: Pubkey,
+    pub ts: i64,
+    pub nav_u: u64,
+    pub count: u64,
+}
+
 #[error_code]
 pub enum StockWeaveError {
     #[msg("Signer is not the strategy creator/authority.")]
@@ -1224,4 +1340,6 @@ pub enum StockWeaveError {
     StalePrice,
     #[msg("Trade quantity does not honor the published price within tolerance.")]
     PriceOutOfBounds,
+    #[msg("NAV value must be positive.")]
+    BadNav,
 }
