@@ -105,7 +105,16 @@ async function main() {
   const priceSymbols = [...symbolSet];
 
   for (let round = 1; round <= ROUNDS; round++) {
-    const live = await fetchLivePricesBySymbol(priceSymbols);
+    // A transient live-price fetch failure (network abort/timeout) must skip this
+    // round, not crash the keeper mid-run after earlier snapshots already landed.
+    let live;
+    try {
+      live = await fetchLivePricesBySymbol(priceSymbols);
+    } catch (e) {
+      console.log(`  ⚠ live price fetch failed (${String((e && e.message) || e)}) — skipping this round`);
+      if (round < ROUNDS) await sleep(INTERVAL_MS);
+      continue;
+    }
     const priced = priceSymbols.filter((s) => live[s] && Number(live[s].price) > 0);
     console.log(`[round ${round}/${ROUNDS}] live: ${priced.map((s) => `${s}=$${Number(live[s].price).toFixed(2)}`).join(", ") || "(none)"}`);
     if (priced.length < priceSymbols.length) { console.log(`  ⚠ missing live prices for ${priceSymbols.filter((s) => !priced.includes(s)).join(", ")} — skipping this round`); if (round < ROUNDS) await sleep(INTERVAL_MS); continue; }

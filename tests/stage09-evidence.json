@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-23T21:10:13.072Z",
+  "generatedAt": "2026-09-23T21:30:22.797Z",
   "network": "devnet",
   "programId": "EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN",
   "officialCreator": "3jNEVjYZtMKHShfPLmS7tH8oKNngd42bU3sX7AJ1yxQD",
@@ -9,8 +9,8 @@
       "strategy": "121GcmWFcZjFUumvqzVvUWdXNcyTUi91UXEP63HsyDZD",
       "navHistory": "2coBKvUWbJmj6zZwwUnGoYNnJNeRvDWzkSnb1Ay51KuR",
       "accountBytes": 2144,
-      "count": 5,
-      "head": 5,
+      "count": 13,
+      "head": 13,
       "bump": 250,
       "inception": "2026-09-23T20:55:48.153Z",
       "inceptionPricesUsd": {
@@ -19,8 +19,8 @@
         "XAI": 78.33453519318734
       },
       "navFirst": 1000000,
-      "navLast": 989219,
-      "sinceLaunchPct": -1.0781,
+      "navLast": 997461,
+      "sinceLaunchPct": -0.2539,
       "checks": {
         "accountExists": {
           "pass": true,
@@ -38,7 +38,7 @@
         },
         "countConsistent": {
           "pass": true,
-          "detail": "count=5 points=5"
+          "detail": "count=13 points=13"
         },
         "timestampsMonotonic": {
           "pass": true
@@ -78,6 +78,54 @@
           "iso": "2026-09-23T20:59:24.000Z",
           "navU": 989219,
           "nav": 0.989219
+        },
+        {
+          "ts": 1790198757,
+          "iso": "2026-09-23T21:25:57.000Z",
+          "navU": 994727,
+          "nav": 0.994727
+        },
+        {
+          "ts": 1790198766,
+          "iso": "2026-09-23T21:26:06.000Z",
+          "navU": 994066,
+          "nav": 0.994066
+        },
+        {
+          "ts": 1790198775,
+          "iso": "2026-09-23T21:26:15.000Z",
+          "navU": 995809,
+          "nav": 0.995809
+        },
+        {
+          "ts": 1790198778,
+          "iso": "2026-09-23T21:26:18.000Z",
+          "navU": 995809,
+          "nav": 0.995809
+        },
+        {
+          "ts": 1790198800,
+          "iso": "2026-09-23T21:26:40.000Z",
+          "navU": 987300,
+          "nav": 0.9873
+        },
+        {
+          "ts": 1790198948,
+          "iso": "2026-09-23T21:29:08.000Z",
+          "navU": 992295,
+          "nav": 0.992295
+        },
+        {
+          "ts": 1790198957,
+          "iso": "2026-09-23T21:29:17.000Z",
+          "navU": 992036,
+          "nav": 0.992036
+        },
+        {
+          "ts": 1790198984,
+          "iso": "2026-09-23T21:29:44.000Z",
+          "navU": 997461,
+          "nav": 0.997461
         }
       ]
     },
@@ -85,8 +133,8 @@
       "strategy": "9xC2oqwX95Yi9EdT3ZNWv5L6uMAztzT7qENDgVNXsCCn",
       "navHistory": "99LYs9LoACzNhr5vD382HjpXj54tYD62X58EonnhPvWD",
       "accountBytes": 2144,
-      "count": 7,
-      "head": 7,
+      "count": 14,
+      "head": 14,
       "bump": 255,
       "inception": "2026-09-23T20:56:03.283Z",
       "inceptionPricesUsd": {
@@ -95,8 +143,8 @@
         "NEURALINK": 430.7324097960873
       },
       "navFirst": 1000000,
-      "navLast": 1000008,
-      "sinceLaunchPct": 0.0008,
+      "navLast": 1004328,
+      "sinceLaunchPct": 0.4328,
       "checks": {
         "accountExists": {
           "pass": true,
@@ -114,7 +162,7 @@
         },
         "countConsistent": {
           "pass": true,
-          "detail": "count=7 points=7"
+          "detail": "count=14 points=14"
         },
         "timestampsMonotonic": {
           "pass": true
@@ -166,6 +214,48 @@
           "iso": "2026-09-23T20:59:27.000Z",
           "navU": 1000008,
           "nav": 1.000008
+        },
+        {
+          "ts": 1790198759,
+          "iso": "2026-09-23T21:25:59.000Z",
+          "navU": 995407,
+          "nav": 0.995407
+        },
+        {
+          "ts": 1790198769,
+          "iso": "2026-09-23T21:26:09.000Z",
+          "navU": 1000096,
+          "nav": 1.000096
+        },
+        {
+          "ts": 1790198786,
+          "iso": "2026-09-23T21:26:26.000Z",
+          "navU": 1000096,
+          "nav": 1.000096
+        },
+        {
+          "ts": 1790198802,
+          "iso": "2026-09-23T21:26:42.000Z",
+          "navU": 1000169,
+          "nav": 1.000169
+        },
+        {
+          "ts": 1790198952,
+          "iso": "2026-09-23T21:29:12.000Z",
+          "navU": 1008962,
+          "nav": 1.008962
+        },
+        {
+          "ts": 1790198960,
+          "iso": "2026-09-23T21:29:20.000Z",
+          "navU": 1008962,
+          "nav": 1.008962
+        },
+        {
+          "ts": 1790198991,
+          "iso": "2026-09-23T21:29:51.000Z",
+          "navU": 1004328,
+          "nav": 1.004328
         }
       ]
     }
