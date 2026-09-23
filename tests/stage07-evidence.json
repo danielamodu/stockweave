@@ -1,0 +1,32 @@
+{
+  "stage": "7-devnet-execute-rebalance",
+  "programId": "EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN",
+  "upgradeTx": "2cXDb5iyZWjVdLuFFLoZ59Tswy3833d5UbLWGMGuLD9r6zzPg2UXFeUzzNpRgeyVwbCsmnmn94g6wbaYUetMrqpX",
+  "creator": "3jNEVjYZtMKHShfPLmS7tH8oKNngd42bU3sX7AJ1yxQD",
+  "basket": "ai-infrastructure",
+  "symbol": "OPENAI",
+  "assetMint": "FtoSc6EV1LeWFsJarfBp6cSqyBFo2AyPwoubQeMka5kk",
+  "usdcMint": "5aR44pbP49XyNvkeH2qpnB6jCcGm6cFeXQgpXDvVXMos",
+  "strategy": "121GcmWFcZjFUumvqzVvUWdXNcyTUi91UXEP63HsyDZD",
+  "proposal": "CLqQkdpaSnTam9krRoenmpqghNZ1huNHG8ZomvyB3vMd",
+  "proposalId": "1790165590152",
+  "vault": "7Wc91P6G3dL7vw9Mq9Jf6JTyXRGApYZj5uQe1a3JWPo7",
+  "treasuryUsdc": "fqCQA6sVSA9RBAkG72KV6XdvJjgYuJfhYs3JoZF8b7j",
+  "notional": 5,
+  "assetBurned": 0.4,
+  "setupTx": "2iYys8ksu9dSJHo1Udxbr8jei8p1VHgDLSGNbg8G6mTLvb8sumUTbymxs5MEMxZheFvVpwMEoT66hXd3K8emYg1N",
+  "proposeTx": "LLQnRTapys2EtyUmvw6raTDiGmuzVtPbJuJUwdvjpdDphovbxfjXEqn5ux9tfvW6isVSRBbQgWD2CeKDqPHF6Bc",
+  "approveTx": "4KRBZNmYvz5ER2cbVkrV5Hp1DB6b7g9R8CJyA2EwhupMFdyNk8AZCzQYtqPFgGmwC4qHqZaiLuMW3kCvom38j6Tp",
+  "executeTx": "3uF8sGMJBp3qxWwfFzoyTjE7qBavGhRCPpAdixN6YrmBWWY1NjRBmgoZtZxvq7MRonrAhqNF5a63DGtP3VW8nCuT",
+  "proposalStatus": 2,
+  "balances": {
+    "midAsset": 2,
+    "afterAsset": 1.6,
+    "midUsdc": 1000,
+    "afterUsdc": 1005,
+    "midTreasury": 200,
+    "afterTreasury": 195
+  },
+  "pass": true,
+  "ts": "2026-09-23T12:13:22.606Z"
+}
