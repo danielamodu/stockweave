@@ -1,0 +1,24 @@
+{
+  "stage": "6-devnet-mirror-buy",
+  "programId": "EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN",
+  "buyer": "3jNEVjYZtMKHShfPLmS7tH8oKNngd42bU3sX7AJ1yxQD",
+  "basket": "ai-infrastructure",
+  "symbol": "OPENAI",
+  "assetMint": "FtoSc6EV1LeWFsJarfBp6cSqyBFo2AyPwoubQeMka5kk",
+  "usdcMint": "5aR44pbP49XyNvkeH2qpnB6jCcGm6cFeXQgpXDvVXMos",
+  "strategy": "121GcmWFcZjFUumvqzVvUWdXNcyTUi91UXEP63HsyDZD",
+  "vault": "7Wc91P6G3dL7vw9Mq9Jf6JTyXRGApYZj5uQe1a3JWPo7",
+  "treasuryUsdc": "fqCQA6sVSA9RBAkG72KV6XdvJjgYuJfhYs3JoZF8b7j",
+  "faucetTx": "2gbbUHJAWFXEDViZ9XDaWSxKhwoJpqiDbH21dfHNSmJ5MK8HGZpaa8LGYqrKgvQ2MxuKxPfPogxAmwinWkR7wMYZ",
+  "subscribeTx": "Xw2dWAmjAaZ6iZmtFEABiwuP6jTgend3mJ2XPd8vtAFLBF6swvcsBuNNT1waXhR54b3YsRDHpfuzKY3F3KdSqFm",
+  "balances": {
+    "usdcBefore": 0,
+    "usdcAfter": 900,
+    "assetBefore": 0,
+    "assetAfter": 1,
+    "treasuryBefore": 0,
+    "treasuryAfter": 100
+  },
+  "pass": true,
+  "ts": "2026-09-23T10:57:05.164Z"
+}

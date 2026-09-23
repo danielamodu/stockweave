@@ -15,6 +15,7 @@
  *      NEXT_PUBLIC_AGENT_PUBKEY | AGENT_PUBKEY (agent to grant PROPOSE).
  */
 const fs = require("fs");
+const path = require("path");
 const crypto = require("crypto");
 const anchor = require("@coral-xyz/anchor");
 const { listApprovedAssets } = require("../lib/asset-registry");
@@ -49,10 +50,26 @@ function pda(seeds) { return PublicKey.findProgramAddressSync(seeds, PROGRAM_ID)
 // transaction size limit. initialize_strategy (index 0) rides the first batch so
 // the Strategy PDA is created before the dependent instructions run.
 async function sendBatched(connection, signer, ixs, size = 4) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const sigs = [];
   for (let i = 0; i < ixs.length; i += size) {
     const tx = new Transaction().add(...ixs.slice(i, i + size));
-    sigs.push(await sendAndConfirmTransaction(connection, tx, [signer], { commitment: "confirmed" }));
+    let lastErr;
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      try {
+        sigs.push(await sendAndConfirmTransaction(connection, tx, [signer], { commitment: "confirmed" }));
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        const msg = String((e && e.message) || e);
+        // Only retry transient RPC races; surface real program errors immediately.
+        if (!/Blockhash not found|block height exceeded|Node is behind|429|Too Many Requests|Timed out|timeout/i.test(msg)) throw e;
+        console.log(`  … transient RPC error (attempt ${attempt}), retrying: ${msg}`);
+        await sleep(1500 * attempt);
+      }
+    }
+    if (lastErr) throw lastErr;
   }
   return sigs;
 }
@@ -66,6 +83,19 @@ async function main() {
 
   const mintOf = {};
   for (const a of listApprovedAssets()) mintOf[a.symbol] = a.mint;
+  // Devnet mirror world: bind each strategy's asset PDAs to the Devnet mirror
+  // mints (created by tests/seed-devnet-mints.js) instead of the mainnet mints, so
+  // the on-chain `subscribe` buy can mint the exact asset a strategy holds. Falls
+  // back to mainnet mints if the registry hasn't been seeded yet (buy disabled).
+  try {
+    const reg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "web", "lib", "devnet-mints.json"), "utf-8"));
+    const mirror = reg && reg.assets ? reg.assets : {};
+    let n = 0;
+    for (const sym of Object.keys(mirror)) if (mirror[sym] && mirror[sym].mint) { mintOf[sym] = mirror[sym].mint; n++; }
+    console.log(n > 0 ? `Binding asset PDAs to ${n} Devnet mirror mints.` : "No Devnet mirror mints seeded yet — using mainnet mints (buy disabled).");
+  } catch {
+    console.log("No devnet-mints.json — using mainnet mints (run tests/seed-devnet-mints.js first to enable on-chain buy).");
+  }
   const sys = SystemProgram.programId;
   const expiry = Math.floor(Date.now() / 1000) + 365 * 86400;
 
