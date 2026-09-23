@@ -1,0 +1,23 @@
+{
+  "_note": "Inception reference for on-chain NAV (real live prices captured once at launch; never hand-edit). The verifiable artifact is the on-chain NavHistory ring.",
+  "baskets": {
+    "ai-infrastructure": {
+      "launchTs": 1790196948,
+      "launchIso": "2026-09-23T20:55:48.153Z",
+      "launchPricesUsd": {
+        "OPENAI": 1326.904482104321,
+        "ANTHROPIC": 1055.7564665943219,
+        "XAI": 78.33453519318734
+      }
+    },
+    "space-deep-tech": {
+      "launchTs": 1790196963,
+      "launchIso": "2026-09-23T20:56:03.283Z",
+      "launchPricesUsd": {
+        "SPACEX": 115.26865725656815,
+        "ANDURIL": 152.28450941184306,
+        "NEURALINK": 430.7324097960873
+      }
+    }
+  }
+}

@@ -1,0 +1,174 @@
+{
+  "generatedAt": "2026-09-23T21:10:13.072Z",
+  "network": "devnet",
+  "programId": "EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN",
+  "officialCreator": "3jNEVjYZtMKHShfPLmS7tH8oKNngd42bU3sX7AJ1yxQD",
+  "note": "Forward-tracked live NAV, recorded on-chain (record_nav ring). No back-fill: pre-IPO mirror assets have no honest price history, and the live source is spot-only. Each strategy's NavHistory PDA is read in one getAccountInfo and decoded here from the program's #[repr(C)] layout — this file is a snapshot a judge can diff against the chain.",
+  "strategies": {
+    "ai-infrastructure": {
+      "strategy": "121GcmWFcZjFUumvqzVvUWdXNcyTUi91UXEP63HsyDZD",
+      "navHistory": "2coBKvUWbJmj6zZwwUnGoYNnJNeRvDWzkSnb1Ay51KuR",
+      "accountBytes": 2144,
+      "count": 5,
+      "head": 5,
+      "bump": 250,
+      "inception": "2026-09-23T20:55:48.153Z",
+      "inceptionPricesUsd": {
+        "OPENAI": 1326.904482104321,
+        "ANTHROPIC": 1055.7564665943219,
+        "XAI": 78.33453519318734
+      },
+      "navFirst": 1000000,
+      "navLast": 989219,
+      "sinceLaunchPct": -1.0781,
+      "checks": {
+        "accountExists": {
+          "pass": true,
+          "detail": "2144 bytes"
+        },
+        "discriminator": {
+          "pass": true,
+          "detail": "account:NavHistory"
+        },
+        "strategyField": {
+          "pass": true
+        },
+        "authority": {
+          "pass": true
+        },
+        "countConsistent": {
+          "pass": true,
+          "detail": "count=5 points=5"
+        },
+        "timestampsMonotonic": {
+          "pass": true
+        },
+        "inceptionRebased": {
+          "pass": true,
+          "detail": "nav0=$1.000000"
+        }
+      },
+      "points": [
+        {
+          "ts": 1790196949,
+          "iso": "2026-09-23T20:55:49.000Z",
+          "navU": 1000000,
+          "nav": 1
+        },
+        {
+          "ts": 1790197106,
+          "iso": "2026-09-23T20:58:26.000Z",
+          "navU": 1000771,
+          "nav": 1.000771
+        },
+        {
+          "ts": 1790197142,
+          "iso": "2026-09-23T20:59:02.000Z",
+          "navU": 1000540,
+          "nav": 1.00054
+        },
+        {
+          "ts": 1790197151,
+          "iso": "2026-09-23T20:59:11.000Z",
+          "navU": 994645,
+          "nav": 0.994645
+        },
+        {
+          "ts": 1790197164,
+          "iso": "2026-09-23T20:59:24.000Z",
+          "navU": 989219,
+          "nav": 0.989219
+        }
+      ]
+    },
+    "space-deep-tech": {
+      "strategy": "9xC2oqwX95Yi9EdT3ZNWv5L6uMAztzT7qENDgVNXsCCn",
+      "navHistory": "99LYs9LoACzNhr5vD382HjpXj54tYD62X58EonnhPvWD",
+      "accountBytes": 2144,
+      "count": 7,
+      "head": 7,
+      "bump": 255,
+      "inception": "2026-09-23T20:56:03.283Z",
+      "inceptionPricesUsd": {
+        "SPACEX": 115.26865725656815,
+        "ANDURIL": 152.28450941184306,
+        "NEURALINK": 430.7324097960873
+      },
+      "navFirst": 1000000,
+      "navLast": 1000008,
+      "sinceLaunchPct": 0.0008,
+      "checks": {
+        "accountExists": {
+          "pass": true,
+          "detail": "2144 bytes"
+        },
+        "discriminator": {
+          "pass": true,
+          "detail": "account:NavHistory"
+        },
+        "strategyField": {
+          "pass": true
+        },
+        "authority": {
+          "pass": true
+        },
+        "countConsistent": {
+          "pass": true,
+          "detail": "count=7 points=7"
+        },
+        "timestampsMonotonic": {
+          "pass": true
+        },
+        "inceptionRebased": {
+          "pass": true,
+          "detail": "nav0=$1.000000"
+        }
+      },
+      "points": [
+        {
+          "ts": 1790196964,
+          "iso": "2026-09-23T20:56:04.000Z",
+          "navU": 1000000,
+          "nav": 1
+        },
+        {
+          "ts": 1790196971,
+          "iso": "2026-09-23T20:56:11.000Z",
+          "navU": 1000000,
+          "nav": 1
+        },
+        {
+          "ts": 1790197109,
+          "iso": "2026-09-23T20:58:29.000Z",
+          "navU": 1000008,
+          "nav": 1.000008
+        },
+        {
+          "ts": 1790197128,
+          "iso": "2026-09-23T20:58:48.000Z",
+          "navU": 1000008,
+          "nav": 1.000008
+        },
+        {
+          "ts": 1790197145,
+          "iso": "2026-09-23T20:59:05.000Z",
+          "navU": 1000008,
+          "nav": 1.000008
+        },
+        {
+          "ts": 1790197153,
+          "iso": "2026-09-23T20:59:13.000Z",
+          "navU": 1000008,
+          "nav": 1.000008
+        },
+        {
+          "ts": 1790197167,
+          "iso": "2026-09-23T20:59:27.000Z",
+          "navU": 1000008,
+          "nav": 1.000008
+        }
+      ]
+    }
+  },
+  "allChecksPass": true
+}
