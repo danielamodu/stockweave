@@ -22,14 +22,16 @@ import {
   readOfficialStrategy,
   readStrategyById,
   readWalletTokenBalances,
+  redeemFromBasketOnchain,
   sizeAssetQtyFromPriceU,
   strategyAddress,
   subscribeToBasketOnchain,
   type NavSeries,
   type OnchainStrategyState,
+  type RedeemLeg,
   type SubscribeLeg,
 } from "@/lib/onchain";
-import { devnetMintBySymbol, devnetSeeded, devnetUsdc } from "@/lib/devnet-registry";
+import { devnetAsset, devnetMintBySymbol, devnetSeeded, devnetUsdc } from "@/lib/devnet-registry";
 
 export type DashboardValue = {
   // session / gate
@@ -91,8 +93,10 @@ export type DashboardValue = {
   usdcBalance: number | null;
   fauceting: boolean;
   buying: boolean;
+  selling: boolean;
   getTestUsdc: () => void;
   buyBasket: () => void;
+  sellBasket: () => void;
 };
 
 // A REAL on-chain proposal returned by /api/agent/propose (agent-signed). The
@@ -144,6 +148,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   // action so the balance effect re-reads the wallet's real holdings.
   const [fauceting, setFauceting] = useState(false);
   const [buying, setBuying] = useState(false);
+  const [selling, setSelling] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
   // Wallet-gate: once the session has resolved, a disconnected user goes back.
@@ -585,6 +590,56 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicKey, connection, sendTransaction, followedBasketId, displayWeights, tokenAmounts, order, mintBySymbol]);
 
+  // Sell (redeem) the followed mix on-chain — the mirror image of buyBasket. For
+  // every non-cash constituent the wallet actually holds, burn the whole balance
+  // and take USDC back from the strategy treasury at the on-chain published price
+  // (D-705). The redeemed quantity is sized from the wallet's REAL on-chain
+  // balance (uiAmount × 10^decimals), and usdc_out is computed on-chain from the
+  // price — the caller supplies nothing to game. Redeems against the same official
+  // strategy the tokens were minted by, so the treasury that pays out is the one
+  // subscribe funded.
+  const sellBasket = useCallback(async () => {
+    const usdc = devnetUsdc();
+    if (!publicKey || !usdc?.mint || !followedBasketId || !tokenAmounts) return;
+    const legs: RedeemLeg[] = [];
+    for (const s of order) {
+      if (s === "USDC") continue;
+      const mint = mintBySymbol[s];
+      const asset = devnetAsset(s);
+      const uiAmt = tokenAmounts[s] ?? 0;
+      if (!mint || !asset || uiAmt <= 0) continue;
+      const assetQty = Math.round(uiAmt * 10 ** asset.decimals); // full-exit, base units
+      if (assetQty <= 0) continue;
+      legs.push({ assetMint: mint, assetQty });
+    }
+    if (legs.length === 0) {
+      toast("Nothing to sell — you don't hold any of this mix yet.");
+      return;
+    }
+    setSelling(true);
+    try {
+      const { signatures } = await redeemFromBasketOnchain({
+        connection,
+        walletPublicKey: publicKey,
+        sendTransaction,
+        strategyCreator: OFFICIAL_CREATOR,
+        strategyId: followedBasketId,
+        usdcMint: new PublicKey(usdc.mint),
+        legs,
+      });
+      setRefreshTick((t) => t + 1);
+      const last = signatures[signatures.length - 1] ?? "";
+      setActivity((a) => [`You sold the mix on-chain · ${legs.length} assets · ${last.slice(0, 8)}… · just now`, ...a]);
+      toast("Sold the mix on-chain");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast(`Couldn't sell: ${msg}`);
+    } finally {
+      setSelling(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicKey, connection, sendTransaction, followedBasketId, tokenAmounts, order, mintBySymbol]);
+
   const donutSegs = useMemo(
     () =>
       order.map((s, i) => ({
@@ -679,8 +734,10 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     usdcBalance,
     fauceting,
     buying,
+    selling,
     getTestUsdc,
     buyBasket,
+    sellBasket,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

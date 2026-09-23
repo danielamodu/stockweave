@@ -42,6 +42,9 @@ const IX = {
   // Stage 6 — Devnet mirror buy/faucet (see programs/stockweave/src/lib.rs).
   faucet_usdc: Uint8Array.from([190, 45, 226, 28, 94, 130, 98, 127]),
   subscribe: Uint8Array.from([254, 28, 191, 138, 156, 179, 183, 53]),
+  // D-705 — sell/redeem: burn the mirror asset from the holder and pay USDC back
+  // from the strategy treasury at the published price (the exit path for subscribe).
+  redeem: Uint8Array.from([184, 12, 86, 149, 70, 196, 97, 225]),
   // D-703 — publish/refresh an asset's on-chain price (creator-signed). subscribe
   // and execute_rebalance bind their token quantity to it within tolerance.
   set_asset_price: Uint8Array.from([153, 17, 107, 170, 189, 135, 141, 170]),
@@ -824,6 +827,58 @@ export async function subscribeToBasketOnchain(params: {
   const CHUNK = 5; // ~12 accounts/leg; 5 legs stays well under the tx size limit
   for (let i = 0; i < legs.length; i += CHUNK) {
     const ixs = legs.slice(i, i + CHUNK).map(mkIx);
+    signatures.push(await sendIxs(connection, walletPublicKey, sendTransaction, ixs));
+  }
+  return { signatures, strategy: strategy.toBase58() };
+}
+
+export type RedeemLeg = { assetMint: string; assetQty: number | bigint };
+// Sell out of a basket: one redeem() instruction per asset leg (mirror asset
+// burned, USDC paid back from the treasury at the published price). Account order
+// must match the program's Redeem struct exactly. Returns every signature.
+export async function redeemFromBasketOnchain(params: {
+  connection: Connection;
+  walletPublicKey: PublicKey;
+  sendTransaction: SendFn;
+  strategyCreator: PublicKey;
+  strategyId: string;
+  usdcMint: PublicKey;
+  legs: RedeemLeg[];
+}): Promise<{ signatures: string[]; strategy: string }> {
+  const { connection, walletPublicKey, sendTransaction, strategyCreator, strategyId, usdcMint, legs } = params;
+  const active = legs.filter((l) => BigInt(l.assetQty) > BigInt(0));
+  if (active.length === 0) throw new Error("Nothing to sell");
+  const strategy = strategyPda(strategyCreator, strategyId);
+  const vault = vaultPda();
+  const sellerUsdc = ataFor(walletPublicKey, usdcMint);
+  const treasuryUsdc = ataFor(vault, usdcMint);
+  const sys = SystemProgram.programId;
+  const mkIx = (leg: RedeemLeg) => {
+    const assetMint = new PublicKey(leg.assetMint);
+    return new TransactionInstruction({
+      programId: PROGRAM_ID,
+      keys: [
+        { pubkey: strategy, isSigner: false, isWritable: false },
+        { pubkey: assetMint, isSigner: false, isWritable: true },
+        { pubkey: usdcMint, isSigner: false, isWritable: false },
+        { pubkey: assetPda(strategy, assetMint), isSigner: false, isWritable: false },
+        { pubkey: pricePda(strategy, assetMint), isSigner: false, isWritable: false },
+        { pubkey: vault, isSigner: false, isWritable: false },
+        { pubkey: walletPublicKey, isSigner: true, isWritable: true },
+        { pubkey: ataFor(walletPublicKey, assetMint), isSigner: false, isWritable: true },
+        { pubkey: sellerUsdc, isSigner: false, isWritable: true },
+        { pubkey: treasuryUsdc, isSigner: false, isWritable: true },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: sys, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.concat([Buffer.from(IX.redeem), u64(leg.assetQty)]),
+    });
+  };
+  const signatures: string[] = [];
+  const CHUNK = 5; // ~13 accounts/leg; 5 legs stays well under the tx size limit
+  for (let i = 0; i < active.length; i += CHUNK) {
+    const ixs = active.slice(i, i + CHUNK).map(mkIx);
     signatures.push(await sendIxs(connection, walletPublicKey, sendTransaction, ixs));
   }
   return { signatures, strategy: strategy.toBase58() };

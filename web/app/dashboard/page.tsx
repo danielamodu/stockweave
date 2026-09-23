@@ -4,7 +4,7 @@
 // one thing (if any) waiting on your OK. Detail lives on the Holdings and
 // Assistant pages; this page links out to them.
 import Link from "next/link";
-import { ArrowRight, Check, Coins, Plus, Settings, ShoppingCart, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, Banknote, Check, Coins, Plus, Settings, ShoppingCart, SlidersHorizontal } from "lucide-react";
 import { useDashboard } from "@/components/dashboard/context";
 import { SetupFlow } from "@/components/dashboard/setup";
 import {
@@ -261,6 +261,16 @@ export default function OverviewPage() {
                   >
                     <ShoppingCart size={15} /> {d.buying ? "Buying on-chain…" : "Buy this mix"}
                   </button>
+                  {d.hasAssetHoldings && (
+                    <button
+                      onClick={d.sellBasket}
+                      disabled={d.selling}
+                      className="bp-row flex w-full items-center gap-2.5 border border-[var(--color-grid-strong)] px-3 py-2.5 text-left text-[13px] font-medium transition-colors hover:border-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Banknote size={15} className="text-[var(--color-accent)]" />
+                      {d.selling ? "Selling on-chain…" : "Sell this mix"}
+                    </button>
+                  )}
                 </>
               ) : (
                 <button
