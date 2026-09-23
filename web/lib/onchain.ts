@@ -58,14 +58,32 @@ function u16(n: number): Buffer {
   b.writeUInt16LE(n, 0);
   return b;
 }
+// Little-endian 64-bit encoders. We fill the 8 bytes by hand instead of calling
+// Buffer.writeBigUInt64LE / writeBigInt64LE: those BigInt methods exist on Node's
+// Buffer but NOT on the `buffer` polyfill bundled into the browser, where they
+// throw "writeBigUInt64LE is not a function". Manual byte writes work everywhere.
 function u64(n: number | bigint): Buffer {
   const b = Buffer.alloc(8);
-  b.writeBigUInt64LE(BigInt(n), 0);
+  const MASK = BigInt(0xff);
+  const SHIFT = BigInt(8);
+  let v = BigInt(n);
+  if (v < BigInt(0)) throw new Error("u64 cannot encode a negative value");
+  for (let i = 0; i < 8; i++) {
+    b[i] = Number(v & MASK);
+    v >>= SHIFT;
+  }
   return b;
 }
 function i64(n: number | bigint): Buffer {
   const b = Buffer.alloc(8);
-  b.writeBigInt64LE(BigInt(n), 0);
+  const MASK = BigInt(0xff);
+  const SHIFT = BigInt(8);
+  // Two's-complement wrap so negative i64s serialize correctly.
+  let v = BigInt(n) & ((BigInt(1) << BigInt(64)) - BigInt(1));
+  for (let i = 0; i < 8; i++) {
+    b[i] = Number(v & MASK);
+    v >>= SHIFT;
+  }
   return b;
 }
 
@@ -385,23 +403,45 @@ export async function approveRebalanceOnchain(params: {
   return sendIxs(connection, walletPublicKey, sendTransaction, [ix]);
 }
 
-// Creator finalizes an approved proposal (applies the new target weight on-chain).
+// Creator finalizes an approved proposal — a REAL Devnet-mirror trim (Stage 7,
+// D-702): the program BURNS `assetQty` of the mirror asset from the creator and
+// TRANSFERS the proposal's notional (whole USDC → 6 dp) from the strategy
+// treasury back to the creator, atomically. `assetQty` is sized off-chain from
+// the live price (shares out, cash in); the USDC leg is fixed on-chain by the
+// guarded `proposal.notional`. Account order MUST match the ExecuteRebalance
+// struct in programs/stockweave/src/lib.rs exactly. Creator-only (has_one);
+// the agent never signs execute.
 export async function executeRebalanceOnchain(params: {
   connection: Connection;
   walletPublicKey: PublicKey;
   sendTransaction: SendFn;
   strategy: PublicKey;
   proposalId: number | bigint;
+  assetMint: PublicKey;
+  usdcMint: PublicKey;
+  assetQty: number | bigint;
 }): Promise<string> {
-  const { connection, walletPublicKey, sendTransaction, strategy, proposalId } = params;
+  const { connection, walletPublicKey, sendTransaction, strategy, proposalId, assetMint, usdcMint, assetQty } = params;
+  if (BigInt(assetQty) <= BigInt(0)) throw new Error("Execute amount (asset quantity to trim) must be positive");
+  const vault = vaultPda();
   const ix = new TransactionInstruction({
     programId: PROGRAM_ID,
     keys: [
       { pubkey: strategy, isSigner: false, isWritable: false },
       { pubkey: proposalPda(strategy, proposalId), isSigner: false, isWritable: true },
+      { pubkey: assetPda(strategy, assetMint), isSigner: false, isWritable: false },
+      { pubkey: assetMint, isSigner: false, isWritable: true },
+      { pubkey: usdcMint, isSigner: false, isWritable: false },
+      { pubkey: vault, isSigner: false, isWritable: false },
       { pubkey: walletPublicKey, isSigner: true, isWritable: true },
+      { pubkey: ataFor(walletPublicKey, assetMint), isSigner: false, isWritable: true },
+      { pubkey: ataFor(walletPublicKey, usdcMint), isSigner: false, isWritable: true },
+      { pubkey: ataFor(vault, usdcMint), isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
-    data: Buffer.from(IX.execute_rebalance),
+    data: Buffer.concat([Buffer.from(IX.execute_rebalance), u64(assetQty)]),
   });
   return sendIxs(connection, walletPublicKey, sendTransaction, [ix]);
 }

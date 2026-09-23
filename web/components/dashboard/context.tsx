@@ -236,16 +236,36 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
           proposalId: proposal.proposalId,
           approvalNonce: proposal.approvalNonce,
         });
-        const execSig = await executeRebalanceOnchain({
-          connection,
-          walletPublicKey: publicKey,
-          sendTransaction,
-          strategy: strategyPk,
-          proposalId: proposal.proposalId,
-        });
-        setApproved(true);
-        setActivity((a) => [`You approved + executed on-chain · ${execSig.slice(0, 8)}… · just now`, ...a]);
-        toast("Approved + executed on-chain");
+        // Size the on-chain trim: burn the asset-quantity worth `notional` USDC at
+        // the live price (9 dp mirror mints); the USDC leg is fixed on-chain by the
+        // guarded notional. Requires seeded mirror mints + a live price for the pick.
+        const usdc = devnetUsdc();
+        const price = data?.tokenPrices?.find((t) => t.symbol === proposal.symbol)?.price ?? 0;
+        const ASSET_DECIMALS = 9; // mirror stock mints use 9 dp (see seed-devnet-mints.js)
+        const assetQty =
+          usdc?.mint && price > 0 ? Math.floor((proposal.notional / price) * 10 ** ASSET_DECIMALS) : 0;
+        if (assetQty > 0 && usdc?.mint) {
+          const execSig = await executeRebalanceOnchain({
+            connection,
+            walletPublicKey: publicKey,
+            sendTransaction,
+            strategy: strategyPk,
+            proposalId: proposal.proposalId,
+            assetMint: new PublicKey(proposal.mint),
+            usdcMint: new PublicKey(usdc.mint),
+            assetQty,
+          });
+          setApproved(true);
+          setActivity((a) => [
+            `You approved + executed on-chain · trimmed ${proposal.symbol} · ${execSig.slice(0, 8)}… · just now`,
+            ...a,
+          ]);
+          toast("Approved + executed on-chain");
+        } else {
+          setApproved(true);
+          setActivity((a) => ["You approved on-chain · execution needs a live price + test mints · just now", ...a]);
+          toast("Approved on-chain");
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         toast(`Couldn't submit: ${msg}`);
@@ -257,7 +277,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     setApproved(true);
     setActivity((a) => ["You approved a tune-up · just now", ...a]);
     toast("Change approved");
-  }, [proposal, publicKey, onchain, connection, sendTransaction]);
+  }, [proposal, publicKey, onchain, connection, sendTransaction, data]);
 
   const onSkip = useCallback(() => {
     setProposal(null);
