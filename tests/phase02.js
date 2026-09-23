@@ -29,9 +29,9 @@ const SNAPSHOT_FIELDS = ["source", "price", "confidence", "publishTimeMs", "rece
 
 check("Allowlist is server-side with approved assets only", () => {
   const assets = listApprovedAssets();
-  assert.strictEqual(assets.length, 4);
+  assert.strictEqual(assets.length, 7);
   const symbols = assets.map((a) => a.symbol).sort();
-  assert.deepStrictEqual(symbols, ["ANTHROPIC", "OPENAI", "USDC", "XAI"]);
+  assert.deepStrictEqual(symbols, ["ANDURIL", "ANTHROPIC", "NEURALINK", "OPENAI", "SPACEX", "USDC", "XAI"]);
   assert.ok(assets.every((a) => a.allowed === true));
   assert.ok(assets.every((a) => a.issuer === "PreStocks" || a.issuer === "Centre"));
   const libSrc = fs.readFileSync(path.join(ROOT, "lib/asset-registry.js"), "utf8");

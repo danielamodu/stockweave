@@ -1,12 +1,25 @@
-# Phase 5 stage 5b — trustless Pyth (PENDING / BLOCKED in Playground)
+# Phase 5 stage 5b — trustless Pyth — ✅ PASS (proven on Devnet 2026-09-22)
 
-Status: **BLOCKED** in Solana Playground. Playground's Rust build ships a fixed
-crate set and cannot resolve `pyth-solana-receiver-sdk`
-(`error[E0433]: use of undeclared crate pyth_solana_receiver_sdk`), and there is
-no local Solana toolchain on the PC (project constraint). Phase 5 is complete
-via stage 5a, which already enforces oracle freshness on-chain (StaleOracle,
-error 6009, proven on Devnet). Stage 5b is the *extra* trustless-authenticity
-demo for the Pyth bounty.
+Status: **DONE.** `verify_reference_oracle` reads the REAL SOL/USD `PriceUpdateV2`
+on-chain and enforces freshness via the Pyth receiver (`get_price_no_older_than`).
+Built locally (WSL, `anchor build --no-idl`; `.so` 363,072 bytes), deployed as a
+Devnet upgrade, and proven with a raw-instruction node client
+(`tests/run-phase5b-direct.js`; the anchor IDL sub-build is still blocked by the
+ark-bn254 `MontFp` panic, so we hand-encode the call).
+
+Evidence (`tests/phase05b-evidence.json`):
+- Program upgrade tx: `4hQdxWjtAt5zRzikAg2myZioumb5MvazJKGTPihMXkMPkNsrk3ZcX5f4rPzmjwxKNs9a29wBANSDytFjXsAyBsu9` (Data Length now 363,072).
+- SOL/USD `PriceUpdateV2` account: `7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE` (owned by the Pyth receiver `rec5EKM…`, 134 bytes).
+- **Fresh read (max_age=3600s) SUCCEEDED:** `5bQUqfddBvubyGyu9ZEjqxmtMXnAZ3Mk2BFZZRx73Ves7ux4nYEqvG4sQqjXV42HLtgUH57dnE4W9joEesfBw9EZ`.
+- **Stale read (max_age=1s) REJECTED on-chain:** custom program error `0x3e80` (Pyth receiver "price too old"). Same feed/account, only max_age differs — unambiguously the freshness guard.
+
+Phase 5 was already complete via stage 5a (StaleOracle, error 6009). 5b is the
+extra trustless-authenticity proof for the Pyth bounty. Decision D-504 (5b
+deferred) is resolved.
+
+Re-run: `ANCHOR_WALLET=~/.config/solana/id.json HELIUS_RPC=<devnet helius url> node tests/run-phase5b-direct.js`
+
+--- original notes (for the Playground path; superseded by the WSL build above) ---
 
 ## How to unblock (before final submission)
 

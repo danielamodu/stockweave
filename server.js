@@ -9,8 +9,6 @@ const { getTokenPriceBySymbol, getReferencePrice } = require("./lib/price-provid
 const { DEMO_FEED_ID } = require("./lib/pyth");
 const agent = require("./lib/agent");
 const {
-  TARGET_WEIGHTS_BPS,
-  HOLDINGS_UNITS,
   calculateCurrentWeights,
   calculateMarkNAV,
   calculateReferenceNAV,
@@ -18,6 +16,10 @@ const {
   calculateWeightDrift,
   classifyStrategyState,
 } = require("./lib/rules");
+const { listBaskets, getBasket, targetWeightsBps, holdingsUnits } = require("./lib/baskets");
+const { fetchLivePricesBySymbol } = require("./lib/live-prices");
+
+const DEFAULT_BASKET_ID = "ai-infrastructure";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -47,16 +49,68 @@ function sendJson(res, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// Client errors (e.g. an unknown basket id) return 400 with the error code,
+// not a 500 — the input was bad, not the server.
+function sendError(res, err) {
+  const status = err && err.code === "UNKNOWN_BASKET" ? 400 : 500;
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify({ error: err.code || "INTERNAL_ERROR", message: err.message }));
+}
+
 // Builds the strategy snapshot via the deterministic rules engine. `demo`
 // selects a labelled simulation: fresh (default) | stale (45s-old Pyth update)
 // | invalid-feed | missing | drift (OPENAI run-up) | paused.
-function buildStrategySnapshot(demo) {
+async function buildStrategySnapshot(demo, basketId = DEFAULT_BASKET_ID) {
   const now = Date.now();
-  const priceOverride = demo === "drift" ? { OPENAI: 140.0 } : {};
-  const symbols = ["OPENAI", "ANTHROPIC", "XAI", "USDC"];
-  const tokenPrices = symbols.map((s) =>
-    getTokenPriceBySymbol(s, { nowMs: now, priceOverride: priceOverride[s] ?? null })
-  );
+  const basket = getBasket(basketId); // throws UNKNOWN_BASKET for bad ids
+  const target = targetWeightsBps(basketId);
+  let units = holdingsUnits(basketId);
+  const symbols = basket.constituents.map((c) => c.symbol);
+  const driftSymbol = symbols.find((s) => s !== "USDC");
+  const NOMINAL_NAV = 10000; // a model portfolio worth ~$10k at current prices
+
+  // Prefer LIVE prices from Jupiter (real market data derived from on-chain
+  // liquidity). Fall back to FIXTURE if the fetch fails/incompletes, so the
+  // demo never hard-breaks on a network hiccup.
+  let tokenPrices;
+  let priceMode = "LIVE";
+  let change24hPct = null;
+  try {
+    const live = await fetchLivePricesBySymbol(symbols, { nowMs: now });
+    if (!symbols.every((s) => live[s])) throw new Error("incomplete live prices");
+    tokenPrices = symbols.map((s) => ({ ...live[s] }));
+    // Size holdings so the basket sits ON target at live prices, then let the
+    // market (or the drift sim) pull it off. Model portfolio, not custody.
+    const priceBySym = {};
+    tokenPrices.forEach((t) => (priceBySym[t.symbol] = t.price));
+    units = {};
+    for (const c of basket.constituents) {
+      units[c.symbol] = ((c.targetBps / 10000) * NOMINAL_NAV) / priceBySym[c.symbol];
+    }
+    // Real weighted 24h change of the basket (display only).
+    change24hPct = basket.constituents.reduce((sum, c) => {
+      const snap = tokenPrices.find((t) => t.symbol === c.symbol);
+      const ch = snap && snap.priceChange24h != null ? snap.priceChange24h : 0;
+      return sum + (c.targetBps / 10000) * ch;
+    }, 0);
+    // "drift" sim: bump the first stock's price to push it overweight so the
+    // agent has a real reason to propose a tune-up.
+    if (demo === "drift" && driftSymbol) {
+      const snap = tokenPrices.find((t) => t.symbol === driftSymbol);
+      snap.price = Math.round(snap.price * 1.4 * 100) / 100;
+      snap.source = "JUPITER+SIM";
+    }
+  } catch {
+    priceMode = "FIXTURE";
+    const priceOverride = {};
+    if (demo === "drift" && driftSymbol) {
+      const base = getTokenPriceBySymbol(driftSymbol, { nowMs: now });
+      priceOverride[driftSymbol] = Math.round(base.price * 1.4 * 100) / 100;
+    }
+    tokenPrices = symbols.map((s) =>
+      getTokenPriceBySymbol(s, { nowMs: now, priceOverride: priceOverride[s] ?? null })
+    );
+  }
   let reference;
   let demoMode = null;
   let paused = false;
@@ -80,49 +134,51 @@ function buildStrategySnapshot(demo) {
   const valuesBySymbol = {};
   for (const t of tokenPrices) {
     pricesBySymbol[t.symbol] = t.price;
-    valuesBySymbol[t.symbol] = t.price * HOLDINGS_UNITS[t.symbol];
+    valuesBySymbol[t.symbol] = t.price * units[t.symbol];
   }
-  const markNAV = calculateMarkNAV(pricesBySymbol, HOLDINGS_UNITS);
+  const markNAV = calculateMarkNAV(pricesBySymbol, units);
   const referenceNAV = calculateReferenceNAV();
   const currentWeights = calculateCurrentWeights(valuesBySymbol, markNAV);
   const classification = classifyStrategyState({
     currentWeightsBps: currentWeights,
-    targetWeightsBps: TARGET_WEIGHTS_BPS,
+    targetWeightsBps: target,
     tokenPrices,
     reference,
     paused,
     markNAV,
     referenceNAV,
   });
-  const drift = calculateWeightDrift(currentWeights, TARGET_WEIGHTS_BPS);
+  const drift = calculateWeightDrift(currentWeights, target);
   const valuation = {
     markNAV,
     referenceNAV,
     premiumDiscount: calculateDislocation(markNAV, referenceNAV),
     dataFreshness: classification.dataQuality === "REFERENCE_UNKNOWN" ? "REFERENCE_UNKNOWN" : classification.dataQuality,
-    dataConfidence: "FIXTURE",
+    dataConfidence: priceMode,
+    change24hPct,
     state: classification.state,
     reasonCodes: classification.reasonCodes,
     currentWeights,
-    targetWeights: TARGET_WEIGHTS_BPS,
+    targetWeights: target,
     maxDriftBps: drift.maxDriftBps,
     proposalAllowed: classification.proposalAllowed,
     executionAllowed: false,
     requiresApproval: true,
   };
   return {
-    dataMode: "FIXTURE",
+    dataMode: priceMode,
     demoMode,
+    basket: { id: basket.id, name: basket.name, theme: basket.theme, description: basket.description },
     tokenPrices,
     reference,
     valuation,
   };
 }
 
-// Phase 6 — run the constrained Clawpump agent over the current snapshot.
+// Phase 6 — run the constrained agent over the current snapshot.
 // `revoked=1` demonstrates that revocation immediately blocks proposals.
-function buildAgentDecision(demo, revoked) {
-  const snap = buildStrategySnapshot(demo);
+async function buildAgentDecision(demo, revoked, basketId = DEFAULT_BASKET_ID) {
+  const snap = await buildStrategySnapshot(demo, basketId);
   const v = snap.valuation;
   const permission = {
     agentId: "clawpump-demo-1",
@@ -145,8 +201,9 @@ function buildAgentDecision(demo, revoked) {
     nowSeconds: Math.floor(Date.now() / 1000),
   });
   return {
-    dataMode: "FIXTURE",
+    dataMode: snap.dataMode,
     demoMode: snap.demoMode,
+    basket: snap.basket,
     agentId: permission.agentId,
     permission,
     // The underlying numbers travel WITH the agent prose — the explanation is
@@ -163,7 +220,7 @@ function buildAgentDecision(demo, revoked) {
   };
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const [urlPath, queryString] = req.url.split("?");
   const query = new URLSearchParams(queryString || "");
   if (urlPath === "/health") {
@@ -175,12 +232,24 @@ const server = http.createServer((req, res) => {
     sendJson(res, { dataMode: "FIXTURE", assets: listApprovedAssets() });
     return;
   }
+  if (urlPath === "/api/baskets") {
+    sendJson(res, { dataMode: "FIXTURE", baskets: listBaskets() });
+    return;
+  }
   if (urlPath === "/api/strategy") {
-    sendJson(res, buildStrategySnapshot(query.get("demo") || "fresh"));
+    try {
+      sendJson(res, await buildStrategySnapshot(query.get("demo") || "fresh", query.get("basket") || DEFAULT_BASKET_ID));
+    } catch (e) {
+      sendError(res, e);
+    }
     return;
   }
   if (urlPath === "/api/agent") {
-    sendJson(res, buildAgentDecision(query.get("demo") || "fresh", query.get("revoked")));
+    try {
+      sendJson(res, await buildAgentDecision(query.get("demo") || "fresh", query.get("revoked"), query.get("basket") || DEFAULT_BASKET_ID));
+    } catch (e) {
+      sendError(res, e);
+    }
     return;
   }
   const rel = urlPath === "/" ? "/index.html" : urlPath;

@@ -16,6 +16,7 @@
 //! verified on-chain 2026-09-19 (executable, BPF upgradeable loader).
 
 use anchor_lang::prelude::*;
+use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, PriceUpdateV2};
 
 // Deployed on Devnet via Solana Playground; verified on-chain 2026-09-19
 // (owner BPFLoaderUpgradeab1e11111111111111111111111, executable=true).
@@ -353,6 +354,30 @@ pub mod stockweave {
         });
         Ok(())
     }
+
+    /// Stage 5b — trustless Pyth. Reads a REAL PriceUpdateV2 and enforces freshness
+    /// on-chain (get_price_no_older_than reverts if stale or wrong feed). Anchor's
+    /// Account<PriceUpdateV2> verifies Pyth ownership. BORROWED reference feed
+    /// (SOL/USD) — NOT a basket asset price (pre-IPO assets have no feed, D-203).
+    pub fn verify_reference_oracle(
+        ctx: Context<VerifyReferenceOracle>,
+        feed_id_hex: String,
+        maximum_age_seconds: u64,
+    ) -> Result<()> {
+        let feed_id = get_feed_id_from_hex(&feed_id_hex)?;
+        let price = ctx
+            .accounts
+            .price_update
+            .get_price_no_older_than(&Clock::get()?, maximum_age_seconds, &feed_id)?;
+        emit!(ReferenceOracleVerified {
+            feed_id,
+            price: price.price,
+            exponent: price.exponent,
+            conf: price.conf,
+            publish_time: price.publish_time,
+        });
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -615,6 +640,11 @@ pub struct ExecuteRebalance<'info> {
 }
 
 #[derive(Accounts)]
+pub struct VerifyReferenceOracle<'info> {
+    pub price_update: Account<'info, PriceUpdateV2>,
+}
+
+#[derive(Accounts)]
 #[instruction(new_strategy_id: String)]
 pub struct ForkStrategy<'info> {
     // Parent (read-only source). Any wallet may fork a public strategy.
@@ -712,6 +742,15 @@ pub struct StrategyForked {
     pub parent: Pubkey,
     pub fork: Pubkey,
     pub creator: Pubkey,
+}
+
+#[event]
+pub struct ReferenceOracleVerified {
+    pub feed_id: [u8; 32],
+    pub price: i64,
+    pub exponent: i32,
+    pub conf: u64,
+    pub publish_time: i64,
 }
 
 #[error_code]

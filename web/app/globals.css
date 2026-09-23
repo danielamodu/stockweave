@@ -1,0 +1,176 @@
+@import "tailwindcss";
+
+/* ============================================================
+   StockWeave — blueprint / wireframe design system
+   Light canvas · electric blue · hairline grid · plus marks ·
+   diagonal hatch · Geist Sans + Geist Mono.
+   ============================================================ */
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Surfaces & ink */
+  --color-page: #ffffff;
+  --color-ink: #0a0a0a;
+  --color-muted: #6e6e6e;
+  --color-faint: #909090;
+
+  /* Grid & structure */
+  --color-grid: rgba(0, 0, 0, 0.15);
+  --color-grid-strong: rgba(0, 0, 0, 0.28);
+  --color-plus: rgba(0, 0, 0, 0.2);
+
+  /* Accent */
+  --color-accent: #0000ff;
+  --color-accent-hover: #0000c4;
+
+  /* Signal (kept in-palette: blue = go, ink = neutral, red only for breach) */
+  --color-ok: #0000ff;
+  --color-warn: #8a5a00;
+  --color-danger: #b00020;
+
+  /* Market change — used ONLY for price/return indicators (gain / loss).
+     Muted, print-like tones so they sit inside the blueprint, not on top of it. */
+  --color-up: #12784f;
+  --color-down: #b00020;
+
+  /* Fills */
+  --color-soft: #e8e8e8;
+  --color-soft-hover: #e0e0e0;
+  --color-badge: rgba(0, 0, 0, 0.1);
+}
+
+html {
+  background: #f4f4f4;
+  color: var(--color-ink);
+}
+
+body {
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Diagonal blueprint hatch — 1px stroke on, 7px off, -45deg */
+.bp-hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--color-grid) 0,
+    var(--color-grid) 1px,
+    transparent 1px,
+    transparent 8px
+  );
+}
+
+/* Entrance: fade + slight rise */
+@keyframes bp-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.bp-enter {
+  opacity: 0;
+  animation: bp-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Loading shimmer */
+@keyframes bp-shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+.bp-skeleton {
+  background: linear-gradient(90deg, #ececec 25%, #f6f6f6 40%, #ececec 55%);
+  background-size: 200% 100%;
+  animation: bp-shimmer 1.3s ease-in-out infinite;
+}
+
+/* Toast slide-in */
+@keyframes bp-toast-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.bp-toast { animation: bp-toast-in 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* Soft content swap (view changes, approve→resolved) */
+@keyframes bp-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.bp-fade { animation: bp-fade 0.35s ease forwards; }
+
+/* Mobile nav drawer: backdrop fade + panel slide in from the left */
+@keyframes bp-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes bp-drawer-in {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+.bp-backdrop { animation: bp-backdrop-in 0.2s ease forwards; }
+.bp-drawer { animation: bp-drawer-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
+/* Keyboard focus — visible, on-brand, never on mouse */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+a:focus:not(:focus-visible),
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-enter, .bp-toast, .bp-fade, .bp-backdrop, .bp-drawer { animation: none; opacity: 1; transform: none; }
+  .bp-skeleton { animation: none; }
+}
+
+/* Uppercase mono micro-label */
+.bp-mono-label {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--color-muted);
+}
+
+/* Live indicator — soft breathing dot for real-time data */
+@keyframes bp-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(0.7); }
+}
+.bp-pulse { animation: bp-pulse 1.8s ease-in-out infinite; }
+
+/* Allocation / weight bars grow from the left on mount */
+@keyframes bp-grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.bp-grow {
+  transform-origin: left center;
+  animation: bp-grow 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Holding row hover — a hairline accent rail slides in on the left */
+.bp-row {
+  position: relative;
+  transition: background-color 0.15s ease;
+}
+.bp-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-accent);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.bp-row:hover { background: rgba(0, 0, 255, 0.03); }
+.bp-row:hover::before { transform: scaleY(1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-pulse, .bp-grow { animation: none; }
+  .bp-grow { transform: none; }
+  .bp-row::before { transition: none; }
+}

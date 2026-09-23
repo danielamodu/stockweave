@@ -1,0 +1,12 @@
+{
+  "phase": "5b",
+  "status": "PASS",
+  "program_id": "EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN",
+  "price_update_account": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+  "feed": "SOL/USD (borrowed reference feed; not a basket asset — D-203)",
+  "fresh_read_tx": "5bQUqfddBvubyGyu9ZEjqxmtMXnAZ3Mk2BFZZRx73Ves7ux4nYEqvG4sQqjXV42HLtgUH57dnE4W9joEesfBw9EZ",
+  "stale_rejected": true,
+  "stale_reason": "Error: Simulation failed. \nMessage: Transaction simulation failed: Error processing Instruction 0: custom program error: 0x3e80. \nLogs: \n[\n  \"Program EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN invok",
+  "rpc": "https://devnet.helius-rpc.com/?api-key=<redacted>",
+  "timestamp": "2026-09-22T09:30:21.796Z"
+}
