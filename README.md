@@ -113,8 +113,8 @@ The browser wallet connection is fixed to Solana Devnet (`clusterApiUrl("devnet"
 
 This is a **Devnet demo built for a hackathon**, and it is deliberate about what is real:
 
-- **Real:** the deployed program and all its guards; wallet-signed create / fork / propose / approve / execute transactions; live PreStocks prices (Jupiter) and a fresh SOL/USD reference (Pyth); on-chain rules, permissions, and forking.
-- **Simulated:** `execute_rebalance` records the approved decision and marks the position **simulated** — it does not custody funds or perform real token swaps yet (decision D-503). What the loop proves is the authorization + guard path, which is real.
+- **Real:** the deployed program and all its guards; wallet-signed create / fork / propose / approve / execute / buy transactions; live PreStocks prices (Jupiter) and a fresh SOL/USD reference (Pyth); on-chain rules, permissions, and forking. **`execute_rebalance` moves real tokens on Devnet** — an approved trim burns the asset's Devnet mirror token from the creator and returns the proposal's guarded notional in test-USDC from the strategy treasury, atomically (decision D-702, supersedes D-503).
+- **Devnet mirror world:** because pre-IPO PreStocks assets have no Devnet liquidity, the program mints its own **mirror** SPL tokens (mint authority = a program `[b"vault"]` PDA, no server key) and uses capped **test-USDC** for cash. Balances, buys, and trims are genuine on-chain token movements; the mints are Devnet stand-ins for the real *mainnet* PreStocks mints, not the mainnet tokens themselves.
 - **Prices, not history:** there is no historical NAV, so the UI shows no fabricated time-series or sparklines. Every figure derives from live data.
 - **PreStocks mints** are real *mainnet* mints referenced for identity/verification; the demo itself runs on Devnet.
 - **The agent proposer endpoint is unauthenticated** (demo only). Proposing is non-custodial and fully guarded on-chain, so the only abuse is spending the agent's own Devnet SOL — but add auth + rate-limiting before any non-demo deployment.
