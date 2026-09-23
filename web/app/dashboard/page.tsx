@@ -4,7 +4,7 @@
 // one thing (if any) waiting on your OK. Detail lives on the Holdings and
 // Assistant pages; this page links out to them.
 import Link from "next/link";
-import { ArrowRight, Check, Plus, Settings, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, Check, Coins, Plus, Settings, ShoppingCart, SlidersHorizontal } from "lucide-react";
 import { useDashboard } from "@/components/dashboard/context";
 import {
   BrowseView,
@@ -221,12 +221,35 @@ export default function OverviewPage() {
           <Card>
             <Label>Quick actions</Label>
             <div className="space-y-2">
-              <button
-                onClick={() => toast("Add funds is disabled in the demo")}
-                className="bp-row flex w-full items-center gap-2.5 border border-[var(--color-grid)] px-3 py-2.5 text-left text-[13px] font-medium transition-colors hover:border-[var(--color-grid-strong)]"
-              >
-                <Plus size={15} className="text-[var(--color-accent)]" /> Add funds
-              </button>
+              {d.devnetReady ? (
+                <>
+                  <button
+                    onClick={d.getTestUsdc}
+                    disabled={d.fauceting}
+                    className="bp-row flex w-full items-center gap-2.5 border border-[var(--color-grid)] px-3 py-2.5 text-left text-[13px] font-medium transition-colors hover:border-[var(--color-grid-strong)] disabled:opacity-50"
+                  >
+                    <Coins size={15} className="text-[var(--color-accent)]" />
+                    {d.fauceting ? "Minting test USDC…" : "Get test USDC"}
+                    {d.usdcBalance != null && d.usdcBalance > 0 && (
+                      <span className="ml-auto font-mono text-[11px] tabular-nums text-[var(--color-muted)]">{fmtUsd(d.usdcBalance)}</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={d.buyBasket}
+                    disabled={d.buying || !hasMix || !d.usdcBalance}
+                    className="bp-row flex w-full items-center gap-2.5 border border-[var(--color-accent)] bg-[var(--color-accent)] px-3 py-2.5 text-left text-[13px] font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <ShoppingCart size={15} /> {d.buying ? "Buying on-chain…" : "Buy this mix"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => toast("Add funds is disabled in the demo")}
+                  className="bp-row flex w-full items-center gap-2.5 border border-[var(--color-grid)] px-3 py-2.5 text-left text-[13px] font-medium transition-colors hover:border-[var(--color-grid-strong)]"
+                >
+                  <Plus size={15} className="text-[var(--color-accent)]" /> Add funds
+                </button>
+              )}
               <Link
                 href={d.makeHref}
                 className="bp-row flex w-full items-center gap-2.5 border border-[var(--color-grid)] px-3 py-2.5 text-left text-[13px] font-medium no-underline text-[var(--color-ink)] transition-colors hover:border-[var(--color-grid-strong)]"

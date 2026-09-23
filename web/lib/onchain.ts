@@ -39,6 +39,9 @@ const IX = {
   approve_rebalance: Uint8Array.from([111, 92, 56, 1, 31, 237, 6, 246]),
   execute_rebalance: Uint8Array.from([36, 232, 110, 192, 96, 226, 100, 120]),
   fork_strategy: Uint8Array.from([189, 124, 51, 106, 39, 45, 186, 13]),
+  // Stage 6 — Devnet mirror buy/faucet (see programs/stockweave/src/lib.rs).
+  faucet_usdc: Uint8Array.from([190, 45, 226, 28, 94, 130, 98, 127]),
+  subscribe: Uint8Array.from([254, 28, 191, 138, 156, 179, 183, 53]),
 } as const;
 const FORK_DISC = IX.fork_strategy;
 
@@ -596,4 +599,104 @@ export async function readStrategyById(
     rules: rInfo ? decodeRules(Buffer.from(rInfo.data)) : undefined,
     agentAllowedActions: permInfo ? decodeAllowedActions(Buffer.from(permInfo.data)) : undefined,
   };
+}
+
+// --- Stage 6: REAL on-chain buy/faucet on Devnet -----------------------------
+// The program mints Devnet "mirror" tokens for the real (mainnet) PreStocks
+// assets so a Devnet wallet genuinely holds the basket. subscribe() = buyer pays
+// USDC into the strategy treasury and the program mints the mirror asset to them
+// (atomic). faucet_usdc() = capped Devnet test cash. The program's vault PDA is
+// the mint authority + treasury owner, so there is NO server key in this path.
+const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+
+// The program's global authority PDA (mint authority for every mirror mint and
+// owner of the USDC treasury). Seeds must match `[b"vault"]` in the program.
+const vaultPda = () => findPda([Buffer.from("vault")]);
+export const vaultAddress = () => vaultPda();
+
+// Derive an associated token account address (works for a PDA owner too — the
+// derivation math is identical). Mirror mints are classic SPL, so default to it.
+function ataFor(owner: PublicKey, mint: PublicKey, tokenProgram: PublicKey = TOKEN_PROGRAM_ID): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [owner.toBuffer(), tokenProgram.toBuffer(), mint.toBuffer()],
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+  )[0];
+}
+export const associatedTokenAddress = (owner: PublicKey, mint: PublicKey) => ataFor(owner, mint);
+// Mint capped Devnet test-USDC to the connected wallet (one wallet-signed txn).
+// `amountBaseUnits` is in USDC base units (6 decimals → 10_000 USDC = 10_000e6).
+export async function faucetUsdcOnchain(params: {
+  connection: Connection;
+  walletPublicKey: PublicKey;
+  sendTransaction: SendFn;
+  usdcMint: PublicKey;
+  amountBaseUnits: number | bigint;
+}): Promise<string> {
+  const { connection, walletPublicKey, sendTransaction, usdcMint, amountBaseUnits } = params;
+  const vault = vaultPda();
+  const recipientUsdc = ataFor(walletPublicKey, usdcMint);
+  const ix = new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: usdcMint, isSigner: false, isWritable: true },
+      { pubkey: vault, isSigner: false, isWritable: false },
+      { pubkey: walletPublicKey, isSigner: true, isWritable: true },
+      { pubkey: recipientUsdc, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([Buffer.from(IX.faucet_usdc), u64(amountBaseUnits)]),
+  });
+  return sendIxs(connection, walletPublicKey, sendTransaction, [ix]);
+}
+
+export type SubscribeLeg = { assetMint: string; usdcIn: number | bigint; assetQty: number | bigint };
+// Buy into a basket: one subscribe() instruction per asset leg (USDC in, mirror
+// asset minted out), batched into wallet-signed transactions. Account order must
+// match the program's Subscribe struct exactly. Returns every signature.
+export async function subscribeToBasketOnchain(params: {
+  connection: Connection;
+  walletPublicKey: PublicKey;
+  sendTransaction: SendFn;
+  strategyCreator: PublicKey;
+  strategyId: string;
+  usdcMint: PublicKey;
+  legs: SubscribeLeg[];
+}): Promise<{ signatures: string[]; strategy: string }> {
+  const { connection, walletPublicKey, sendTransaction, strategyCreator, strategyId, usdcMint, legs } = params;
+  if (legs.length === 0) throw new Error("Nothing to buy");
+  const strategy = strategyPda(strategyCreator, strategyId);
+  const vault = vaultPda();
+  const buyerUsdc = ataFor(walletPublicKey, usdcMint);
+  const treasuryUsdc = ataFor(vault, usdcMint);
+  const sys = SystemProgram.programId;
+  const mkIx = (leg: SubscribeLeg) => {
+    const assetMint = new PublicKey(leg.assetMint);
+    return new TransactionInstruction({
+      programId: PROGRAM_ID,
+      keys: [
+        { pubkey: strategy, isSigner: false, isWritable: false },
+        { pubkey: assetMint, isSigner: false, isWritable: true },
+        { pubkey: usdcMint, isSigner: false, isWritable: false },
+        { pubkey: assetPda(strategy, assetMint), isSigner: false, isWritable: false },
+        { pubkey: vault, isSigner: false, isWritable: false },
+        { pubkey: walletPublicKey, isSigner: true, isWritable: true },
+        { pubkey: ataFor(walletPublicKey, assetMint), isSigner: false, isWritable: true },
+        { pubkey: buyerUsdc, isSigner: false, isWritable: true },
+        { pubkey: treasuryUsdc, isSigner: false, isWritable: true },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: sys, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.concat([Buffer.from(IX.subscribe), u64(leg.usdcIn), u64(leg.assetQty)]),
+    });
+  };
+  const signatures: string[] = [];
+  const CHUNK = 5; // ~12 accounts/leg; 5 legs stays well under the tx size limit
+  for (let i = 0; i < legs.length; i += CHUNK) {
+    const ixs = legs.slice(i, i + CHUNK).map(mkIx);
+    signatures.push(await sendIxs(connection, walletPublicKey, sendTransaction, ixs));
+  }
+  return { signatures, strategy: strategy.toBase58() };
 }

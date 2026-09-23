@@ -15,11 +15,16 @@ import type { Agent, Basket, PriceSnap, Strategy } from "@/components/dashboard/
 import {
   approveRebalanceOnchain,
   executeRebalanceOnchain,
+  faucetUsdcOnchain,
+  OFFICIAL_CREATOR,
   readOfficialStrategy,
   readStrategyById,
   readWalletTokenBalances,
+  subscribeToBasketOnchain,
   type OnchainStrategyState,
+  type SubscribeLeg,
 } from "@/lib/onchain";
+import { devnetMintBySymbol, devnetSeeded, devnetUsdc } from "@/lib/devnet-registry";
 
 export type DashboardValue = {
   // session / gate
@@ -71,6 +76,13 @@ export type DashboardValue = {
   // links
   makeHref: string;
   stratHref: string;
+  // Devnet mirror buy/faucet — only meaningful once the mirror mints are seeded.
+  devnetReady: boolean;
+  usdcBalance: number | null;
+  fauceting: boolean;
+  buying: boolean;
+  getTestUsdc: () => void;
+  buyBasket: () => void;
 };
 
 // A REAL on-chain proposal returned by /api/agent/propose (agent-signed). The
@@ -116,6 +128,11 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   // Connected wallet's REAL token balances for the followed basket (symbol → uiAmount).
   const [tokenAmounts, setTokenAmounts] = useState<Record<string, number> | null>(null);
   const [holdingsLoading, setHoldingsLoading] = useState(false);
+  // Devnet mirror buy/faucet: in-flight flags + a tick bumped after each on-chain
+  // action so the balance effect re-reads the wallet's real holdings.
+  const [fauceting, setFauceting] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   // Wallet-gate: once the session has resolved, a disconnected user goes back.
   useEffect(() => {
@@ -332,6 +349,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   // Map each basket symbol to its real mint (served by /api/baskets from the
   // approved registry) so we can read the wallet's actual balances.
   const mintBySymbol = useMemo(() => {
+    // Prefer the Devnet mirror mints once seeded — the wallet can genuinely hold
+    // and buy those on-chain. Fall back to the real mainnet mints otherwise.
+    if (devnetSeeded()) return devnetMintBySymbol();
     const m: Record<string, string> = {};
     for (const b of baskets) for (const c of b.constituents) if (c.mint) m[c.symbol] = c.mint;
     return m;
@@ -371,7 +391,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicKey, following, connection, mintsKey]);
+  }, [publicKey, following, connection, mintsKey, refreshTick]);
   // Value those real balances at live prices (USDC pinned to $1). A missing
   // price contributes nothing rather than inventing a mark.
   const holdingsBySymbol = useMemo(() => {
@@ -390,7 +410,93 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     [holdingsBySymbol],
   );
   const hasHoldings = total > 0;
-  // __CTX_APPEND3__
+
+  // --- Devnet mirror buy/faucet (real on-chain, wallet-signed) ---
+  const devnetReady = devnetSeeded();
+  const usdcBalance = tokenAmounts ? tokenAmounts["USDC"] ?? 0 : null;
+
+  // Mint capped Devnet test-USDC to the connected wallet (one wallet-signed txn),
+  // then re-read balances. No server key — the program's vault PDA is the mint
+  // authority, so the program itself signs the mint.
+  const getTestUsdc = useCallback(async () => {
+    const usdc = devnetUsdc();
+    if (!publicKey || !usdc?.mint) return;
+    setFauceting(true);
+    try {
+      const amountBaseUnits = 1_000 * 10 ** usdc.decimals; // 1,000 test USDC
+      const sig = await faucetUsdcOnchain({
+        connection,
+        walletPublicKey: publicKey,
+        sendTransaction,
+        usdcMint: new PublicKey(usdc.mint),
+        amountBaseUnits,
+      });
+      setRefreshTick((t) => t + 1);
+      setActivity((a) => [`You minted 1,000 test USDC on-chain · ${sig.slice(0, 8)}… · just now`, ...a]);
+      toast("1,000 test USDC added");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast(`Couldn't get test USDC: ${msg}`);
+    } finally {
+      setFauceting(false);
+    }
+  }, [publicKey, connection, sendTransaction]);
+
+  // Buy the followed mix on-chain: split the wallet's test-USDC across the
+  // non-cash constituents by their target weights (the cash-reserve weight simply
+  // stays as USDC), sizing each leg from the REAL live price. Subscribes to the
+  // official strategy — whose asset PDAs are bound to the mirror mints — so the
+  // program mints the buyer the real mirror tokens and the wallet holds the mix.
+  const buyBasket = useCallback(async () => {
+    const usdc = devnetUsdc();
+    if (!publicKey || !usdc?.mint || !followedBasketId || !displayWeights) return;
+    const usdcUi = tokenAmounts?.["USDC"] ?? 0;
+    if (usdcUi <= 0) {
+      toast("Get test USDC first.");
+      return;
+    }
+    const usdcBase = Math.floor(usdcUi * 10 ** usdc.decimals);
+    const ASSET_DECIMALS = 9; // mirror stock mints use 9 dp (see seed-devnet-mints.js)
+    const legs: SubscribeLeg[] = [];
+    for (const s of order) {
+      if (s === "USDC") continue;
+      const mint = mintBySymbol[s];
+      const weightBps = displayWeights[s] ?? 0;
+      const price = priceBySym[s]?.price ?? 0;
+      if (!mint || weightBps <= 0 || price <= 0) continue;
+      const usdcIn = Math.floor((usdcBase * weightBps) / 10_000);
+      if (usdcIn <= 0) continue;
+      const assetQty = Math.floor((usdcIn / 10 ** usdc.decimals / price) * 10 ** ASSET_DECIMALS);
+      if (assetQty <= 0) continue;
+      legs.push({ assetMint: mint, usdcIn, assetQty });
+    }
+    if (legs.length === 0) {
+      toast("Nothing to buy — no priced assets in this mix.");
+      return;
+    }
+    setBuying(true);
+    try {
+      const { signatures } = await subscribeToBasketOnchain({
+        connection,
+        walletPublicKey: publicKey,
+        sendTransaction,
+        strategyCreator: OFFICIAL_CREATOR,
+        strategyId: followedBasketId,
+        usdcMint: new PublicKey(usdc.mint),
+        legs,
+      });
+      setRefreshTick((t) => t + 1);
+      const last = signatures[signatures.length - 1] ?? "";
+      setActivity((a) => [`You bought the mix on-chain · ${legs.length} assets · ${last.slice(0, 8)}… · just now`, ...a]);
+      toast("Bought the mix on-chain");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast(`Couldn't buy: ${msg}`);
+    } finally {
+      setBuying(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicKey, connection, sendTransaction, followedBasketId, displayWeights, tokenAmounts, order, mintBySymbol, priceBySym]);
 
   const donutSegs = useMemo(
     () =>
@@ -479,6 +585,12 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     activity,
     makeHref,
     stratHref,
+    devnetReady,
+    usdcBalance,
+    fauceting,
+    buying,
+    getTestUsdc,
+    buyBasket,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
