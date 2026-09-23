@@ -164,6 +164,125 @@ export function StatCell({ label, value, sub }: { label: string; value: React.Re
 }
 // __UI_APPEND2__
 
+// One live-recorded NAV snapshot (nav_u in USDC micro-units, read off-chain).
+export type NavPointUi = { ts: number; navU: number };
+export type NavSeriesUi = { count: number; points: NavPointUi[] };
+
+// Forward-tracked, on-chain proof-of-return. NAV is rebased to the first recorded
+// snapshot (a since-launch index), so the panel is honest about being live-tracked
+// from launch — NOT a backtest. Empty and single-point states say exactly that.
+export function PerformancePanel({ series, loading }: { series: NavSeriesUi | null; loading: boolean }) {
+  const pts = series?.points ?? [];
+  const n = pts.length;
+  const base = n > 0 ? pts[0].navU : 0;
+  const last = n > 0 ? pts[n - 1].navU : 0;
+  const sinceLaunch = base > 0 ? (last / base - 1) * 100 : null;
+  const since =
+    n > 0 ? new Date(pts[0].ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : null;
+  const subtitle = n === 0 ? "Recorded forward from launch" : `${n} snapshot${n === 1 ? "" : "s"} · since ${since}`;
+
+  return (
+    <Card>
+      <Label
+        right={
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--color-faint)]">
+            On-chain · live-recorded
+          </span>
+        }
+      >
+        Performance
+      </Label>
+      {loading && series === null ? (
+        <Skeleton className="h-[92px] w-full" />
+      ) : n >= 2 ? (
+        <div>
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <div
+                className={cn(
+                  "font-mono text-[1.7rem] leading-none tabular-nums",
+                  sinceLaunch! >= 0 ? "text-[var(--color-up)]" : "text-[var(--color-down)]",
+                )}
+              >
+                {sinceLaunch! >= 0 ? "+" : ""}
+                {sinceLaunch!.toFixed(2)}%
+              </div>
+              <div className="mt-2 bp-mono-label text-[9px]">Since launch</div>
+            </div>
+            <div className="text-right font-mono text-[11px] leading-relaxed text-[var(--color-muted)]">
+              <div className="tabular-nums">{fmtUsd(last / base, 4)}</div>
+              <div className="text-[var(--color-faint)]">per $1.00 at launch</div>
+            </div>
+          </div>
+          <NavSparkline points={pts} up={sinceLaunch! >= 0} />
+          <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--color-faint)]">{subtitle}</div>
+        </div>
+      ) : (
+        // 0 or 1 real points: never draw a fake curve — state the honest status.
+        <div className="py-2">
+          <div className="font-mono text-[1.7rem] leading-none tabular-nums text-[var(--color-muted)]">
+            {n === 1 ? "0.00%" : "—"}
+          </div>
+          <div className="mt-2 bp-mono-label text-[9px]">Since launch</div>
+          <p className="mt-3 max-w-[46ch] text-[12px] leading-relaxed text-[var(--color-muted)]">
+            {n === 1
+              ? `Tracking started ${since}. The return line fills in as more on-chain snapshots are recorded — no history is back-filled.`
+              : "NAV is recorded on-chain going forward from launch. Pre-IPO assets have no honest price history to back-test, so the track record starts empty and accumulates real snapshots."}
+          </p>
+          <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--color-faint)]">{subtitle}</div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// Minimal blueprint sparkline: a rebased NAV line with a dashed launch baseline.
+// viewBox is unitless + preserveAspectRatio none so it stretches to the card; the
+// stroke stays hairline-crisp via vector-effect.
+function NavSparkline({ points, up }: { points: NavPointUi[]; up: boolean }) {
+  const W = 100;
+  const H = 34;
+  const vals = points.map((p) => p.navU);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const span = max - min || 1;
+  const n = points.length;
+  const x = (i: number) => (n === 1 ? 0 : (i / (n - 1)) * W);
+  const y = (v: number) => H - ((v - min) / span) * (H - 4) - 2; // 2px padding top/bottom
+  const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(2)} ${y(p.navU).toFixed(2)}`).join(" ");
+  const baseY = y(points[0].navU);
+  const stroke = up ? "var(--color-up)" : "var(--color-down)";
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      className="mt-4 h-16 w-full border border-[var(--color-grid)] bg-[var(--color-soft)]/40"
+      role="img"
+      aria-label="NAV since launch"
+    >
+      <line
+        x1="0"
+        y1={baseY}
+        x2={W}
+        y2={baseY}
+        stroke="var(--color-grid-strong)"
+        strokeWidth="0.5"
+        strokeDasharray="2 2"
+        vectorEffect="non-scaling-stroke"
+      />
+      <path
+        d={line}
+        fill="none"
+        stroke={stroke}
+        strokeWidth="1.5"
+        vectorEffect="non-scaling-stroke"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 // weights are in basis points (bps); order is the symbol sequence to render.
 export function MixBar({ order, weights }: { order: string[]; weights: Record<string, number> }) {
   return (

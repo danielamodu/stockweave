@@ -13,6 +13,7 @@ import {
   ChangeBadge,
   Donut,
   Label,
+  PerformancePanel,
   StatCell,
   StatRow,
   fmtUsd,
@@ -140,6 +141,7 @@ export default function OverviewPage() {
             )}
           </Card>
           {/* __OVERVIEW_LEFT2__ */}
+          <PerformancePanel series={d.nav} loading={d.navLoading} />
           <Card>
             <Label right={<span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--color-faint)]">{d.isLive ? "Live · Jupiter" : "Demo"}</span>}>
               Top holdings

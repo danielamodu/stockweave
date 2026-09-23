@@ -45,6 +45,9 @@ const IX = {
   // D-703 — publish/refresh an asset's on-chain price (creator-signed). subscribe
   // and execute_rebalance bind their token quantity to it within tolerance.
   set_asset_price: Uint8Array.from([153, 17, 107, 170, 189, 135, 141, 170]),
+  // Stage 9 — append a live-priced NAV snapshot to the on-chain ring (creator/
+  // keeper-signed; the READ+PROPOSE agent never records).
+  record_nav: Uint8Array.from([12, 39, 195, 29, 234, 54, 160, 24]),
 } as const;
 const FORK_DISC = IX.fork_strategy;
 
@@ -54,6 +57,7 @@ const ACC = {
   StrategyAsset: Uint8Array.from([24, 194, 2, 138, 13, 96, 102, 51]),
   RebalanceProposal: Uint8Array.from([144, 76, 53, 190, 165, 195, 179, 53]),
   AssetPrice: Uint8Array.from([197, 106, 216, 207, 155, 172, 40, 245]),
+  NavHistory: Uint8Array.from([40, 139, 233, 237, 46, 197, 105, 74]),
 } as const;
 
 // Little-endian scalar encoders (borsh).
@@ -108,6 +112,7 @@ const pricePda = (strategy: PublicKey, mint: PublicKey) =>
   findPda([Buffer.from("price"), strategy.toBuffer(), mint.toBuffer()]);
 const proposalPda = (strategy: PublicKey, proposalId: number | bigint) =>
   findPda([Buffer.from("proposal"), strategy.toBuffer(), u64(proposalId)]);
+const navPda = (strategy: PublicKey) => findPda([Buffer.from("nav"), strategy.toBuffer()]);
 
 function borshString(s: string): Buffer {
   const b = Buffer.from(s, "utf8");
@@ -842,3 +847,78 @@ export async function setAssetPriceOnchain(params: {
   return sendIxs(connection, walletPublicKey, sendTransaction, [ix]);
 }
 export const priceAddress = (strategy: PublicKey, mint: PublicKey) => pricePda(strategy, mint);
+
+// --- Stage 9: on-chain NAV track record (proof-of-return) --------------------
+// NavHistory is a zero_copy ring buffer (seeds [b"nav", strategy]) a keeper
+// appends to via record_nav. One getAccountInfo returns the whole history. The
+// decoder below mirrors the program's #[repr(C)] byte layout exactly (including
+// the explicit padding that keeps it bytemuck-Pod).
+export const navAddress = (strategy: PublicKey) => navPda(strategy);
+
+export type NavPoint = { ts: number; navU: number };
+// nav_u is USDC micro-units (6 dp). This is the raw ring: `points` are already
+// unwrapped oldest → newest and trimmed to how many snapshots actually exist.
+export type NavSeries = { count: number; points: NavPoint[] };
+
+const NAV_CAPACITY = 128; // must match NAV_CAPACITY in the program.
+
+// NavHistory data after the 8-byte disc: strategy(32) + authority(32) + count(u64)
+// + head(u32) + _pad0(4) + points([{i64 ts, u64 nav_u} × 128] @ off 80) + bump(u8)
+// + _pad1(7). Unwrap the ring: with count ≤ capacity the live points are slots
+// 0..count in order; once wrapped, read `capacity` points starting at head (the
+// oldest) and wrapping — that yields oldest → newest.
+function decodeNavHistory(data: Buffer): NavSeries {
+  const count = Number(data.readBigUInt64LE(8 + 32 + 32));
+  const POINTS_OFF = 8 + 32 + 32 + 8 + 4 + 4; // = 88 (disc + fields + _pad0)
+  const readPoint = (slot: number): NavPoint => {
+    const o = POINTS_OFF + slot * 16;
+    const ts = Number(data.readBigInt64LE(o));
+    const navU = Number(data.readBigUInt64LE(o + 8));
+    return { ts, navU };
+  };
+  const live = Math.min(count, NAV_CAPACITY);
+  const points: NavPoint[] = [];
+  if (count <= NAV_CAPACITY) {
+    for (let i = 0; i < live; i++) points.push(readPoint(i));
+  } else {
+    const head = count % NAV_CAPACITY; // oldest live slot
+    for (let i = 0; i < NAV_CAPACITY; i++) points.push(readPoint((head + i) % NAV_CAPACITY));
+  }
+  return { count, points };
+}
+
+// Read a strategy's on-chain NAV history in one getAccountInfo. Returns an empty
+// series (count 0) when the keeper has never recorded — the UI shows an honest
+// "tracking since …" empty state rather than inventing a curve.
+export async function readNavHistory(connection: Connection, strategy: PublicKey): Promise<NavSeries> {
+  const info = await connection.getAccountInfo(navPda(strategy));
+  if (!info || !discEq(info.data, ACC.NavHistory)) return { count: 0, points: [] };
+  return decodeNavHistory(Buffer.from(info.data));
+}
+
+// Append one live-priced NAV snapshot (creator/keeper-signed). nav_u is the
+// target-weight basket value in USDC micro-units (6 dp). Account order MUST match
+// the RecordNav struct in programs/stockweave/src/lib.rs.
+export function buildRecordNavIx(strategy: PublicKey, creator: PublicKey, navU: number | bigint): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: strategy, isSigner: false, isWritable: false },
+      { pubkey: navPda(strategy), isSigner: false, isWritable: true },
+      { pubkey: creator, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([Buffer.from(IX.record_nav), u64(navU)]),
+  });
+}
+export async function recordNavOnchain(params: {
+  connection: Connection;
+  walletPublicKey: PublicKey;
+  sendTransaction: SendFn;
+  strategy: PublicKey;
+  navU: number | bigint;
+}): Promise<string> {
+  const { connection, walletPublicKey, sendTransaction, strategy, navU } = params;
+  const ix = buildRecordNavIx(strategy, walletPublicKey, navU);
+  return sendIxs(connection, walletPublicKey, sendTransaction, [ix]);
+}

@@ -18,12 +18,14 @@ import {
   faucetUsdcOnchain,
   OFFICIAL_CREATOR,
   readAssetPrices,
+  readNavHistory,
   readOfficialStrategy,
   readStrategyById,
   readWalletTokenBalances,
   sizeAssetQtyFromPriceU,
   strategyAddress,
   subscribeToBasketOnchain,
+  type NavSeries,
   type OnchainStrategyState,
   type SubscribeLeg,
 } from "@/lib/onchain";
@@ -47,6 +49,9 @@ export type DashboardValue = {
   loading: boolean;
   // real on-chain state for the followed basket (rules + agent permission)
   onchain: OnchainStrategyState | null;
+  // forward-tracked, on-chain NAV proof-of-return (record_nav ring); null = loading
+  nav: NavSeries | null;
+  navLoading: boolean;
   // derived figures
   isLive: boolean;
   total: number;
@@ -122,6 +127,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<Strategy | null>(null);
   const [agent, setAgent] = useState<Agent | null>(null);
   const [onchain, setOnchain] = useState<OnchainStrategyState | null>(null);
+  const [nav, setNav] = useState<NavSeries | null>(null);
+  const [navLoading, setNavLoading] = useState(false);
   const [approved, setApproved] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [activity, setActivity] = useState<string[]>([]);
@@ -213,6 +220,37 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       read = readOfficialStrategy(connection, followedBasketId);
     }
     read.then((s) => live && setOnchain(s)).catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [following, followedBasketId, customOnchain?.id, wallet, connection]);
+
+  // Read the forward-tracked on-chain NAV ring for the followed strategy. The
+  // keeper records real live-priced snapshots into a PDA at [b"nav", strategy];
+  // this is the honest proof-of-return (no back-fill — pre-IPO mirror assets have
+  // no price history). A fork with no snapshots yet reads back empty, and the
+  // panel says so rather than inventing a curve.
+  useEffect(() => {
+    if (!following || !followedBasketId) {
+      setNav(null);
+      return;
+    }
+    let live = true;
+    setNav(null);
+    setNavLoading(true);
+    let strategyPk: PublicKey;
+    try {
+      strategyPk =
+        customOnchain?.id && wallet
+          ? strategyAddress(new PublicKey(wallet), customOnchain.id)
+          : strategyAddress(OFFICIAL_CREATOR, followedBasketId);
+    } catch {
+      strategyPk = strategyAddress(OFFICIAL_CREATOR, followedBasketId);
+    }
+    readNavHistory(connection, strategyPk)
+      .then((s) => live && setNav(s))
+      .catch(() => live && setNav({ count: 0, points: [] }))
+      .finally(() => live && setNavLoading(false));
     return () => {
       live = false;
     };
@@ -606,6 +644,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     agent,
     loading,
     onchain,
+    nav,
+    navLoading,
     isLive,
     total,
     change24h,
