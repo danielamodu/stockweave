@@ -601,6 +601,88 @@ pub mod stockweave {
         Ok(())
     }
 
+    /// Sell/redeem — the mirror image of `subscribe`, and what lets a follower EXIT
+    /// to cash rather than only enter. Any holder burns `asset_qty` of a strategy
+    /// asset's mirror token (the holder signs) and the program pays them USDC from
+    /// the strategy treasury (vault PDA signs), atomically: shares out, cash in.
+    ///
+    /// The USDC owed is computed on-chain from the published price (D-703):
+    /// usdc_out = asset_qty * price_u / 10^decimals. The caller supplies no USDC
+    /// figure, so there is no lever to over-draw the treasury; the price must exist
+    /// and be fresh. A solvency check makes an underfunded redeem revert cleanly.
+    /// (Like any AMM-less fixed-price pool the treasury bears buy→redeem P&L — fine
+    /// for the Devnet mirror's test cash.)
+    pub fn redeem(ctx: Context<Redeem>, asset_qty: u64) -> Result<()> {
+        require!(asset_qty > 0, StockWeaveError::BadRedemption);
+        require!(
+            ctx.accounts.strategy.status != StrategyStatus::Paused as u8,
+            StockWeaveError::StrategyPaused
+        );
+        require!(ctx.accounts.asset.enabled, StockWeaveError::AssetDisabled);
+        // USDC owed, computed on-chain from the published price (D-703): price_u is
+        // USDC base units (6dp) per WHOLE token → usdc_out = asset_qty*price_u/10^dec.
+        let usdc_out: u64;
+        {
+            let now = Clock::get()?.unix_timestamp;
+            let ap = &ctx.accounts.asset_price;
+            require!(ap.price_u > 0, StockWeaveError::PriceUnavailable);
+            require!(
+                now.saturating_sub(ap.updated_at) <= ASSET_PRICE_MAX_AGE_SECONDS,
+                StockWeaveError::StalePrice
+            );
+            let scale = 10u128
+                .checked_pow(ctx.accounts.asset_mint.decimals as u32)
+                .ok_or(StockWeaveError::PriceUnavailable)?;
+            let out = (asset_qty as u128)
+                .checked_mul(ap.price_u as u128)
+                .ok_or(StockWeaveError::ExcessiveNotional)?
+                / scale;
+            require!(out > 0, StockWeaveError::PriceOutOfBounds);
+            require!(out <= u64::MAX as u128, StockWeaveError::ExcessiveNotional);
+            usdc_out = out as u64;
+        }
+        // Treasury must cover the payout — revert cleanly otherwise.
+        require!(
+            ctx.accounts.treasury_usdc_ata.amount >= usdc_out,
+            StockWeaveError::InsufficientTreasury
+        );
+        // 1) Burn the redeemed mirror asset from the seller (seller signs).
+        token::burn(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Burn {
+                    mint: ctx.accounts.asset_mint.to_account_info(),
+                    from: ctx.accounts.seller_asset_ata.to_account_info(),
+                    authority: ctx.accounts.seller.to_account_info(),
+                },
+            ),
+            asset_qty,
+        )?;
+        // 2) Pay USDC from the strategy treasury to the seller (vault PDA signs).
+        let bump = ctx.bumps.vault;
+        let seeds: &[&[u8]] = &[b"vault", &[bump]];
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.treasury_usdc_ata.to_account_info(),
+                    to: ctx.accounts.seller_usdc_ata.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                &[seeds],
+            ),
+            usdc_out,
+        )?;
+        emit!(Redeemed {
+            strategy: ctx.accounts.strategy.key(),
+            seller: ctx.accounts.seller.key(),
+            asset_mint: ctx.accounts.asset_mint.key(),
+            asset_qty,
+            usdc_out,
+        });
+        Ok(())
+    }
+
     /// Publish/refresh the on-chain price for one strategy asset (D-703).
     /// `price_u` is USDC base units (6 dp) per ONE whole asset token — e.g.
     /// $100.00 → 100_000_000. Creator-signed: the strategy owner is the price
@@ -1186,6 +1268,60 @@ pub struct Subscribe<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct Redeem<'info> {
+    // Boxed like Subscribe so try_accounts' stack frame stays under the 4KB SBF limit.
+    // The strategy being redeemed from (read-only identity).
+    pub strategy: Box<Account<'info, Strategy>>,
+    #[account(mut)]
+    pub asset_mint: Box<Account<'info, Mint>>,
+    pub usdc_mint: Box<Account<'info, Mint>>,
+    // Binds asset_mint to this strategy and must be enabled.
+    #[account(
+        seeds = [b"asset", strategy.key().as_ref(), asset_mint.key().as_ref()],
+        bump = asset.bump,
+        constraint = asset.strategy == strategy.key() @ StockWeaveError::Unauthorized,
+    )]
+    pub asset: Box<Account<'info, StrategyAsset>>,
+    // Published price for asset_mint — the payout is computed from it (D-703).
+    #[account(
+        seeds = [b"price", strategy.key().as_ref(), asset_mint.key().as_ref()],
+        bump = asset_price.bump,
+        constraint = asset_price.strategy == strategy.key() @ StockWeaveError::Unauthorized,
+    )]
+    pub asset_price: Box<Account<'info, AssetPrice>>,
+    /// CHECK: program vault PDA — mint authority + treasury owner. CPI signer only.
+    #[account(seeds = [b"vault"], bump)]
+    pub vault: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub seller: Signer<'info>,
+    // Seller's asset ATA — must already hold the tokens being burned (not created).
+    #[account(
+        mut,
+        associated_token::mint = asset_mint,
+        associated_token::authority = seller,
+    )]
+    pub seller_asset_ata: Box<Account<'info, TokenAccount>>,
+    // Seller's USDC ATA — created on demand so a first-time seller can be paid.
+    #[account(
+        init_if_needed,
+        payer = seller,
+        associated_token::mint = usdc_mint,
+        associated_token::authority = seller,
+    )]
+    pub seller_usdc_ata: Box<Account<'info, TokenAccount>>,
+    // Strategy treasury — the USDC source; must already exist and hold the payout.
+    #[account(
+        mut,
+        associated_token::mint = usdc_mint,
+        associated_token::authority = vault,
+    )]
+    pub treasury_usdc_ata: Box<Account<'info, TokenAccount>>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
@@ -1275,6 +1411,15 @@ pub struct Subscribed {
 }
 
 #[event]
+pub struct Redeemed {
+    pub strategy: Pubkey,
+    pub seller: Pubkey,
+    pub asset_mint: Pubkey,
+    pub asset_qty: u64,
+    pub usdc_out: u64,
+}
+
+#[event]
 pub struct AssetPriceSet {
     pub strategy: Pubkey,
     pub mint: Pubkey,
@@ -1342,4 +1487,8 @@ pub enum StockWeaveError {
     PriceOutOfBounds,
     #[msg("NAV value must be positive.")]
     BadNav,
+    #[msg("Redeem amount (asset quantity to sell) must be positive.")]
+    BadRedemption,
+    #[msg("Strategy treasury has insufficient USDC to cover this redemption.")]
+    InsufficientTreasury,
 }
