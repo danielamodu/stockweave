@@ -522,6 +522,42 @@ export async function listStrategyAssets(connection: Connection, strategy: Publi
     .map((a) => decodeAsset(Buffer.from(a.account.data)));
 }
 
+// SPL token program ids. PreStocks mints are Token-2022; USDC is the classic
+// Token program — so a wallet's real holdings can live under either.
+const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+const TOKEN_2022_PROGRAM_ID = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+
+// The wallet's REAL on-chain balance for each requested mint, keyed mint → uiAmount.
+// Queries both token programs and keeps only the mints asked for; a mint the
+// wallet doesn't hold is simply absent (treat as 0). No custody is modelled —
+// this is the connected wallet's own token accounts, nothing else.
+export async function readWalletTokenBalances(
+  connection: Connection,
+  owner: PublicKey,
+  mints: string[],
+): Promise<Record<string, number>> {
+  const want = new Set(mints);
+  const out: Record<string, number> = {};
+  const results = await Promise.all(
+    [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].map((programId) =>
+      connection
+        .getParsedTokenAccountsByOwner(owner, { programId })
+        .catch(() => ({ value: [] as { account: { data: unknown } }[] })),
+    ),
+  );
+  for (const res of results) {
+    for (const { account } of res.value) {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      const info = (account.data as any)?.parsed?.info;
+      const mint: string | undefined = info?.mint;
+      const ui: number | null = info?.tokenAmount?.uiAmount ?? null;
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+      if (mint && want.has(mint) && typeof ui === "number") out[mint] = (out[mint] ?? 0) + ui;
+    }
+  }
+  return out;
+}
+
 // Read any strategy (creator + id) the same way readOfficialStrategy reads the
 // canonical ones. Permission is looked up for the configured agent (or the
 // explicit `agent`), preferring that grant over the creator's own.

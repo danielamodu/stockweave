@@ -12,12 +12,12 @@ import { useSession } from "@/lib/session";
 import { plainStatus, plainSuggestion, pct, segTone } from "@/lib/present";
 import { toast } from "@/components/toast";
 import type { Agent, Basket, PriceSnap, Strategy } from "@/components/dashboard/ui";
-import { BASELINE } from "@/components/dashboard/ui";
 import {
   approveRebalanceOnchain,
   executeRebalanceOnchain,
   readOfficialStrategy,
   readStrategyById,
+  readWalletTokenBalances,
   type OnchainStrategyState,
 } from "@/lib/onchain";
 
@@ -53,6 +53,10 @@ export type DashboardValue = {
   donutSegs: { key: string; pct: number; color: string }[];
   prices: Record<string, PriceSnap>;
   movers: PriceSnap[];
+  // real holdings — the connected wallet's actual token balances for this basket
+  hasHoldings: boolean;
+  holdingsLoading: boolean;
+  holdingsBySymbol: Record<string, number> | null;
   // agent proposal flow
   suggestion: { text: string } | null;
   proposal: AgentProposal | null;
@@ -109,6 +113,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [proposal, setProposal] = useState<AgentProposal | null>(null);
   const [requestingProposal, setRequestingProposal] = useState(false);
   const [approving, setApproving] = useState(false);
+  // Connected wallet's REAL token balances for the followed basket (symbol → uiAmount).
+  const [tokenAmounts, setTokenAmounts] = useState<Record<string, number> | null>(null);
+  const [holdingsLoading, setHoldingsLoading] = useState(false);
 
   // Wallet-gate: once the session has resolved, a disconnected user goes back.
   useEffect(() => {
@@ -293,7 +300,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   // --- derived (all from real engine output) ---
   const isFork = Boolean(customMix);
   const isLive = data?.dataMode === "LIVE";
-  const total = data?.valuation.markNAV ?? BASELINE;
   const loading = following && !data;
 
   const followedBasket = useMemo(
@@ -323,6 +329,67 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     for (const t of data?.tokenPrices ?? []) if (t.symbol) m[t.symbol] = t;
     return m;
   }, [data]);
+  // Map each basket symbol to its real mint (served by /api/baskets from the
+  // approved registry) so we can read the wallet's actual balances.
+  const mintBySymbol = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const b of baskets) for (const c of b.constituents) if (c.mint) m[c.symbol] = c.mint;
+    return m;
+  }, [baskets]);
+
+  // Read the connected wallet's REAL token balances for the followed basket.
+  // The protocol custodies nothing, so this is the wallet's own holdings —
+  // genuinely empty ($0) until the user buys the assets. No modelled portfolio.
+  const mintsKey = order.map((s) => mintBySymbol[s] ?? "").join(",");
+  useEffect(() => {
+    if (!publicKey || !following) {
+      setTokenAmounts(null);
+      return;
+    }
+    const mints = order.map((s) => mintBySymbol[s]).filter(Boolean) as string[];
+    if (mints.length === 0) {
+      setTokenAmounts(null);
+      return;
+    }
+    let live = true;
+    setHoldingsLoading(true);
+    readWalletTokenBalances(connection, publicKey, mints)
+      .then((byMint) => {
+        if (!live) return;
+        const bySym: Record<string, number> = {};
+        for (const s of order) {
+          const mint = mintBySymbol[s];
+          bySym[s] = mint ? byMint[mint] ?? 0 : 0;
+        }
+        setTokenAmounts(bySym);
+      })
+      .catch(() => live && setTokenAmounts({}))
+      .finally(() => {
+        if (live) setHoldingsLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicKey, following, connection, mintsKey]);
+  // Value those real balances at live prices (USDC pinned to $1). A missing
+  // price contributes nothing rather than inventing a mark.
+  const holdingsBySymbol = useMemo(() => {
+    if (!tokenAmounts) return null;
+    const out: Record<string, number> = {};
+    for (const s of order) {
+      const amt = tokenAmounts[s] ?? 0;
+      const price = s === "USDC" ? 1 : priceBySym[s]?.price ?? 0;
+      out[s] = amt * (price ?? 0);
+    }
+    return out;
+  }, [tokenAmounts, order, priceBySym]);
+
+  const total = useMemo(
+    () => (holdingsBySymbol ? Object.values(holdingsBySymbol).reduce((a, b) => a + b, 0) : 0),
+    [holdingsBySymbol],
+  );
+  const hasHoldings = total > 0;
   // __CTX_APPEND3__
 
   const donutSegs = useMemo(
@@ -335,21 +402,19 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     [order, displayWeights],
   );
 
-  // 24h change, weighted by the mix actually held (cash contributes nothing).
-  // For an official basket this equals the engine's change24hPct; a fork gets
-  // its own honest number from its own weights.
+  // "Today" is YOUR position's move — weighted by what you actually hold. With
+  // no holdings there is no personal P&L to show, so it reads as "—". (The
+  // strategy's own live moves still show per-asset and in Today's movers.)
   const change24h = useMemo(() => {
-    if (isLive && displayWeights) {
-      let acc = 0;
-      for (const s of Object.keys(displayWeights)) {
-        if (s === "USDC") continue;
-        const ch = priceBySym[s]?.priceChange24h;
-        if (ch != null) acc += (pct(displayWeights[s]) / 100) * ch;
-      }
-      return acc;
+    if (!hasHoldings || !holdingsBySymbol || total <= 0) return null;
+    let acc = 0;
+    for (const s of order) {
+      if (s === "USDC") continue;
+      const ch = priceBySym[s]?.priceChange24h;
+      if (ch != null) acc += (holdingsBySymbol[s] / total) * ch;
     }
-    return data?.valuation.change24hPct ?? null;
-  }, [isLive, displayWeights, priceBySym, data]);
+    return acc;
+  }, [hasHoldings, holdingsBySymbol, total, order, priceBySym]);
 
   const movers = useMemo(
     () =>
@@ -399,6 +464,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     donutSegs,
     prices: priceBySym,
     movers,
+    hasHoldings,
+    holdingsLoading,
+    holdingsBySymbol,
     suggestion,
     proposal,
     canRunAgent,

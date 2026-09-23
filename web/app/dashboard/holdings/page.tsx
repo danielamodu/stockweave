@@ -34,7 +34,11 @@ export default function HoldingsPage() {
 
       <div className="mt-6">
         <StatRow>
-          <StatCell label="Your value" value={fmtUsd(d.total)} sub={d.isLive ? "marked live" : "demo value"} />
+          <StatCell
+            label="Your value"
+            value={fmtUsd(d.total)}
+            sub={d.holdingsLoading ? "reading wallet…" : d.hasHoldings ? "marked live" : "no holdings yet — rules-only"}
+          />
           <StatCell label="Today" value={<ChangeBadge value={d.change24h} size={16} className="text-[1.3rem]" />} sub="24h · weighted" />
           <StatCell label="Companies" value={d.holdingCount} sub="+ cash" />
           <StatCell label="Cash buffer" value={d.cashPct == null ? "—" : d.cashPct + "%"} sub="reserve" />
@@ -52,7 +56,7 @@ export default function HoldingsPage() {
           Positions
         </Label>
         {hasMix ? (
-          <Holdings order={d.order} weights={d.displayWeights!} prices={d.prices} live={d.isLive} total={d.total} />
+          <Holdings order={d.order} weights={d.displayWeights!} prices={d.prices} live={d.isLive} total={d.total} values={d.holdingsBySymbol} />
         ) : (
           <div className="space-y-3 py-2">
             <Skeleton className="h-12 w-full" />

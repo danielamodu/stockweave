@@ -57,7 +57,11 @@ export default function OverviewPage() {
 
       <div className="mt-5">
         <StatRow>
-          <StatCell label="Your value" value={fmtUsd(d.total)} sub={d.isLive ? "marked live" : "demo value"} />
+          <StatCell
+            label="Your value"
+            value={fmtUsd(d.total)}
+            sub={d.holdingsLoading ? "reading wallet…" : d.hasHoldings ? "marked live" : "no holdings yet — rules-only"}
+          />
           <StatCell label="Today" value={<ChangeBadge value={d.change24h} size={16} className="text-[1.3rem]" />} sub="24h · weighted" />
           <StatCell label="Holdings" value={d.holdingCount} sub="companies" />
           <StatCell label="Cash buffer" value={d.cashPct == null ? "—" : d.cashPct + "%"} sub="reserve" />

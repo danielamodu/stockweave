@@ -41,7 +41,7 @@ export type Basket = {
   name: string;
   theme: string;
   description: string;
-  constituents: { symbol: string; targetBps: number }[];
+  constituents: { symbol: string; targetBps: number; mint?: string | null }[];
 };
 
 export const BASELINE = 10000; // on-target starting value (model portfolio)
@@ -208,6 +208,7 @@ export function HoldingRow({
   snap,
   live,
   total,
+  value: valueProp,
   i,
 }: {
   sym: string;
@@ -215,11 +216,14 @@ export function HoldingRow({
   snap?: PriceSnap;
   live: boolean;
   total: number;
+  value?: number;
   i: number;
 }) {
   const isCash = sym === "USDC";
   const thin = snap?.validity === "LOW_LIQUIDITY";
-  const value = total * (weightPct / 100);
+  // Real position value when the wallet's holdings are known; otherwise fall
+  // back to the target-weight slice of the total.
+  const value = valueProp ?? total * (weightPct / 100);
   return (
     <li className="bp-row flex items-center gap-3 border-b border-[var(--color-grid)] px-2 py-3 last:border-b-0 sm:px-3">
       <AssetTile symbol={sym} size={36} glyph={16} className={isCash ? "bp-hatch" : undefined} />
@@ -271,12 +275,14 @@ export function Holdings({
   prices,
   live,
   total,
+  values,
 }: {
   order: string[];
   weights: Record<string, number>;
   prices: Record<string, PriceSnap>;
   live: boolean;
   total: number;
+  values?: Record<string, number> | null;
 }) {
   return (
     <div>
@@ -296,6 +302,7 @@ export function Holdings({
             snap={prices[sym]}
             live={live}
             total={total}
+            value={values ? values[sym] ?? 0 : undefined}
             i={i}
           />
         ))}

@@ -190,5 +190,13 @@ export function assets() {
 }
 
 export function baskets() {
-  return { dataMode: "FIXTURE", baskets: listBaskets() };
+  // Attach each constituent's real mint (from the approved registry) so the
+  // client can read the wallet's actual token balances for the basket.
+  const mintBySymbol: Record<string, string> = {};
+  for (const a of listApprovedAssets() as any[]) mintBySymbol[a.symbol] = a.mint;
+  const list = (listBaskets() as any[]).map((b) => ({
+    ...b,
+    constituents: b.constituents.map((c: any) => ({ ...c, mint: mintBySymbol[c.symbol] ?? null })),
+  }));
+  return { dataMode: "FIXTURE", baskets: list };
 }
