@@ -18,6 +18,7 @@ StockWeave turns a basket of tokenized pre-IPO stocks into an on-chain *strategy
 - **Approval is mandatory and on-chain.** `approve_rebalance` and `execute_rebalance` use `has_one = creator`: only the strategy's on-chain creator can approve and execute. The agent, a separate keypair, can only `propose_rebalance`.
 - **Everything is inspectable and forkable.** Rules, weights, and the agent grant live in Program-Derived Accounts. `fork_strategy` mints you a wallet-owned copy you fully control.
 - **Real data only.** Live PreStocks prices come from Jupiter; the SOL/USD reference comes from Pyth. No fabricated history, no fake sparklines.
+- **The track record lives on-chain.** A keeper records each basket's live-priced NAV into a `NavHistory` ring-buffer PDA (`record_nav`), so proof-of-return is a verifiable on-chain artifact read in one `getAccountInfo` — not a claim in a slide. It accumulates *forward* from launch (rebased to $1.000000); pre-IPO assets have no honest history to back-test, so the chart starts empty and fills in with real snapshots rather than a fabricated backtest.
 
 ## How the agent loop works
 
@@ -48,7 +49,7 @@ Because approve/execute are creator-only, the end-to-end loop runs on a basket *
 | `lib/` | Node engine: asset registry, basket catalogue, rules, price provider, live Jupiter prices (mirrored into `web/lib/core/`). |
 | `server.js` | Standalone engine HTTP API + phase test harness — the web app is self-contained and does not require it. |
 | `web/` | Next.js frontend — the demo UI (browse, follow, fork, inspect, assistant). |
-| `tests/` | Phase tests, on-chain evidence JSON, and `seed-onchain-strategy.js`. |
+| `tests/` | Phase tests, on-chain evidence JSON, `seed-onchain-strategy.js`, and the NAV keeper/verifier (`record-nav.js` · `verify-nav.js`). |
 | `docs/` | Architecture, protocol, decision log, and per-phase checkpoints. |
 | `target/idl`, `target/types` | Hand-maintained IDL + TS types (the Anchor IDL sub-build is blocked upstream; treated as source). |
 
@@ -89,6 +90,20 @@ The proposer is a backend route that signs with its own keypair; it degrades gra
    ```
 4. In the app, create your own fork (it grants the agent automatically), then use **Ask the agent to review** on the Assistant page.
 
+**(Optional) Record + verify on-chain NAV**
+
+The proof-of-return chart is fed by a keeper that snapshots each basket's live-priced NAV on-chain. Record a few points, then re-read them straight from the chain:
+```bash
+# append real live-priced NAV snapshots to each basket's on-chain ring
+ANCHOR_WALLET=/path/to/deploy-keypair.json \
+NAV_ROUNDS=4 NAV_INTERVAL_MS=3000 \
+node tests/record-nav.js
+
+# read both rings back from chain, check invariants, write stage09-evidence.json
+node tests/verify-nav.js
+```
+`record_nav` is creator/keeper-signed (the agent never records); inception prices are captured once into `tests/nav-basis.json` and reused, so the NAV is rebased to $1.000000 at launch. Nothing is back-filled.
+
 **(Optional) Standalone engine + tests (repo root)**
 ```bash
 npm install
@@ -104,6 +119,7 @@ npm test    # phase + basket tests
 | `NEXT_PUBLIC_AGENT_PUBKEY` | web · agent · seed | Agent public key (fork grant, client display, key-match check). |
 | `ANCHOR_WALLET` | seed script | Path to the deploy/creator keypair. |
 | `HELIUS_RPC` · `ANCHOR_PROVIDER_URL` · `AGENT_RPC` | seed · agent | Optional Devnet RPC override (defaults to the public Devnet endpoint). |
+| `NAV_ROUNDS` · `NAV_INTERVAL_MS` | keeper | Optional — how many NAV snapshots `tests/record-nav.js` appends per run (default 1) and the delay between them (default 3000 ms). |
 
 The browser wallet connection is fixed to Solana Devnet (`clusterApiUrl("devnet")`).
 
@@ -116,6 +132,7 @@ This is a **Devnet demo built for a hackathon**, and it is deliberate about what
 - **Real:** the deployed program and all its guards; wallet-signed create / fork / propose / approve / execute / buy transactions; live PreStocks prices (Jupiter) and a fresh SOL/USD reference (Pyth); on-chain rules, permissions, and forking. **`execute_rebalance` moves real tokens on Devnet** — an approved trim burns the asset's Devnet mirror token from the creator and returns the proposal's guarded notional in test-USDC from the strategy treasury, atomically (decision D-702, supersedes D-503).
 - **Devnet mirror world:** because pre-IPO PreStocks assets have no Devnet liquidity, the program mints its own **mirror** SPL tokens (mint authority = a program `[b"vault"]` PDA, no server key) and uses capped **test-USDC** for cash. Balances, buys, and trims are genuine on-chain token movements; the mints are Devnet stand-ins for the real *mainnet* PreStocks mints, not the mainnet tokens themselves.
 - **Buys and trims are price-bound on-chain.** Both `subscribe` (buy) and `execute_rebalance` (trim) check the token quantity against a creator-published `AssetPrice` PDA (1% tolerance, 24 h freshness), so a buyer can't mint shares for negligible USDC and a trim can't drain the treasury while burning ~0 asset. Prices come from **live Jupiter quotes** published per asset by the seed script — never fabricated; an unpriced asset reverts rather than guessing (decision D-703).
+- **Proof-of-return is forward-tracked on-chain, not back-tested.** A creator/keeper-signed `record_nav` appends each basket's live-priced NAV (a weight-faithful index rebased to $1.000000 at inception) to a `NavHistory` ring-buffer PDA. There is deliberately **no back-fill**: the live price source is spot-only and pre-IPO mirror assets have no honest history, so the track record starts empty at launch and grows with real snapshots. The dashboard reads the whole ring in one `getAccountInfo` and shows honest empty / single-point states instead of inventing a curve. Verify it yourself with `node tests/verify-nav.js`, which re-reads both official rings from chain and writes `tests/stage09-evidence.json` (decision D-704).
 - **Prices, not history:** there is no historical NAV, so the UI shows no fabricated time-series or sparklines. Every figure derives from live data.
 - **PreStocks mints** are real *mainnet* mints referenced for identity/verification; the demo itself runs on Devnet.
 - **The agent proposer endpoint is unauthenticated** (demo only). Proposing is non-custodial and fully guarded on-chain, so the only abuse is spending the agent's own Devnet SOL — but add auth + rate-limiting before any non-demo deployment.
