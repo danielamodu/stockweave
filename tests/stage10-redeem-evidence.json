@@ -1,0 +1,39 @@
+{
+  "stage": "10-devnet-mirror-redeem",
+  "decision": "D-705",
+  "programId": "EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN",
+  "seller": "3jNEVjYZtMKHShfPLmS7tH8oKNngd42bU3sX7AJ1yxQD",
+  "basket": "ai-infrastructure",
+  "symbol": "OPENAI",
+  "assetMint": "FtoSc6EV1LeWFsJarfBp6cSqyBFo2AyPwoubQeMka5kk",
+  "usdcMint": "5aR44pbP49XyNvkeH2qpnB6jCcGm6cFeXQgpXDvVXMos",
+  "strategy": "121GcmWFcZjFUumvqzVvUWdXNcyTUi91UXEP63HsyDZD",
+  "vault": "7Wc91P6G3dL7vw9Mq9Jf6JTyXRGApYZj5uQe1a3JWPo7",
+  "treasuryUsdc": "fqCQA6sVSA9RBAkG72KV6XdvJjgYuJfhYs3JoZF8b7j",
+  "priceU": 100000000,
+  "priceUsd": 100,
+  "faucetTx": "2zUE5sowHtHXNpafXNGrCK4Q7UTwEmrLUWfEi8pWYGvM2HDh45r8XssWHPqYrREadXNaWM9dqmve92t8NHPa2QwP",
+  "setPriceTx": "8Lbn1jguXJzpqdEPDJjMM7bckY4kxpNb2tfJxa27FYzraN9wgdcJPhL5oaTx9m55AriaGHCUYppVxsKu5jE7gjB",
+  "subscribeTx": "2cN2nRWJ4JsMzGMSY8Z2mLhX1dZfCZwdFQJ29mUPtzwcfu2eqnf9PKg41ckwaxnM21qa98MvHijxajbcfrfvEWGs",
+  "redeemTx": "31vZ7Eq7g6CxnyvB1EWUxyuYgD7mgrgJu1JsZzDpGYrEyxDqBeobcgtKgXFjETmf4uKsq1nYxd9w8CY1MSXgQR3k",
+  "redeemQty": 500000000,
+  "expectUsdcOut": 50,
+  "overRedeem": {
+    "gamedQty": "15900000000",
+    "rejected": true,
+    "rejectErr": "Simulation failed. ",
+    "rejectCode": 6026,
+    "solvencyGuard": true,
+    "balancesUnchanged": true
+  },
+  "balances": {
+    "usdcBefore": 4960,
+    "usdcAfter": 5010,
+    "assetBefore": 6.05,
+    "assetAfter": 5.55,
+    "treasuryBefore": 640,
+    "treasuryAfter": 590
+  },
+  "pass": true,
+  "ts": "2026-09-23T23:30:18.098Z"
+}
