@@ -16,6 +16,10 @@
 //! verified on-chain 2026-09-19 (executable, BPF upgradeable loader).
 
 use anchor_lang::prelude::*;
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token::{self, Mint, MintTo, Token, TokenAccount, Transfer},
+};
 use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, PriceUpdateV2};
 
 // Deployed on Devnet via Solana Playground; verified on-chain 2026-09-19
@@ -378,6 +382,81 @@ pub mod stockweave {
         });
         Ok(())
     }
+
+    /// Stage 6 (Devnet mirror) — test-USDC faucet. Mints capped Devnet USDC-mirror
+    /// to the caller so a wallet has cash to subscribe with. The vault PDA is the
+    /// mint authority (no server key — the program itself signs). Devnet demo
+    /// convenience only; there is no mainnet counterpart.
+    pub fn faucet_usdc(ctx: Context<FaucetUsdc>, amount: u64) -> Result<()> {
+        require!(
+            amount > 0 && amount <= 1_000_000_000_000,
+            StockWeaveError::BadFaucetAmount
+        );
+        let bump = ctx.bumps.vault;
+        let seeds: &[&[u8]] = &[b"vault", &[bump]];
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.usdc_mint.to_account_info(),
+                    to: ctx.accounts.recipient_usdc_ata.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                &[seeds],
+            ),
+            amount,
+        )?;
+        Ok(())
+    }
+    /// Stage 6 (Devnet mirror) — REAL on-chain buy "through the program". The
+    /// buyer pays `usdc_in` USDC into the strategy treasury (buyer-signed transfer)
+    /// and the program mints `asset_qty` of the asset's mirror token to the buyer
+    /// (vault-signed mint_to). Atomic: cash out, shares in. The asset PDA binds the
+    /// mint to this strategy and must be enabled. This reopens D-503 for Devnet:
+    /// the program now custodies USDC and issues mirror tokens (documented).
+    pub fn subscribe(ctx: Context<Subscribe>, usdc_in: u64, asset_qty: u64) -> Result<()> {
+        require!(usdc_in > 0 && asset_qty > 0, StockWeaveError::BadSubscription);
+        require!(
+            ctx.accounts.strategy.status != StrategyStatus::Paused as u8,
+            StockWeaveError::StrategyPaused
+        );
+        require!(ctx.accounts.asset.enabled, StockWeaveError::AssetDisabled);
+        // 1) Buyer pays USDC into the treasury (buyer authority signs).
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.buyer_usdc_ata.to_account_info(),
+                    to: ctx.accounts.treasury_usdc_ata.to_account_info(),
+                    authority: ctx.accounts.buyer.to_account_info(),
+                },
+            ),
+            usdc_in,
+        )?;
+        // 2) Program mints the mirror asset to the buyer (vault PDA authority signs).
+        let bump = ctx.bumps.vault;
+        let seeds: &[&[u8]] = &[b"vault", &[bump]];
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.asset_mint.to_account_info(),
+                    to: ctx.accounts.buyer_asset_ata.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                &[seeds],
+            ),
+            asset_qty,
+        )?;
+        emit!(Subscribed {
+            strategy: ctx.accounts.strategy.key(),
+            buyer: ctx.accounts.buyer.key(),
+            asset_mint: ctx.accounts.asset_mint.key(),
+            usdc_in,
+            asset_qty,
+        });
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -676,6 +755,75 @@ pub struct ForkStrategy<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct FaucetUsdc<'info> {
+    // Boxed to keep try_accounts' stack frame under the 4KB SBF limit.
+    #[account(mut)]
+    pub usdc_mint: Box<Account<'info, Mint>>,
+    /// CHECK: program vault PDA — mint authority for every mirror mint. Not read
+    /// or written as data; only used as the CPI signer via its seeds.
+    #[account(seeds = [b"vault"], bump)]
+    pub vault: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub recipient: Signer<'info>,
+    #[account(
+        init_if_needed,
+        payer = recipient,
+        associated_token::mint = usdc_mint,
+        associated_token::authority = recipient,
+    )]
+    pub recipient_usdc_ata: Box<Account<'info, TokenAccount>>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+#[derive(Accounts)]
+pub struct Subscribe<'info> {
+    // Every Account is boxed so try_accounts' generated stack frame stays under
+    // the 4KB SBF limit — the two init_if_needed ATAs alone overflow it unboxed.
+    // The strategy being bought into (read-only identity).
+    pub strategy: Box<Account<'info, Strategy>>,
+    #[account(mut)]
+    pub asset_mint: Box<Account<'info, Mint>>,
+    pub usdc_mint: Box<Account<'info, Mint>>,
+    // Binds asset_mint to this strategy and must be enabled — the buyer can only
+    // ever mint an asset that genuinely belongs to the strategy.
+    #[account(
+        seeds = [b"asset", strategy.key().as_ref(), asset_mint.key().as_ref()],
+        bump = asset.bump,
+        constraint = asset.strategy == strategy.key() @ StockWeaveError::Unauthorized,
+    )]
+    pub asset: Box<Account<'info, StrategyAsset>>,
+    /// CHECK: program vault PDA — mint authority + treasury owner. CPI signer only.
+    #[account(seeds = [b"vault"], bump)]
+    pub vault: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub buyer: Signer<'info>,
+    #[account(
+        init_if_needed,
+        payer = buyer,
+        associated_token::mint = asset_mint,
+        associated_token::authority = buyer,
+    )]
+    pub buyer_asset_ata: Box<Account<'info, TokenAccount>>,
+    #[account(
+        mut,
+        associated_token::mint = usdc_mint,
+        associated_token::authority = buyer,
+    )]
+    pub buyer_usdc_ata: Box<Account<'info, TokenAccount>>,
+    #[account(
+        init_if_needed,
+        payer = buyer,
+        associated_token::mint = usdc_mint,
+        associated_token::authority = vault,
+    )]
+    pub treasury_usdc_ata: Box<Account<'info, TokenAccount>>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
@@ -753,6 +901,15 @@ pub struct ReferenceOracleVerified {
     pub publish_time: i64,
 }
 
+#[event]
+pub struct Subscribed {
+    pub strategy: Pubkey,
+    pub buyer: Pubkey,
+    pub asset_mint: Pubkey,
+    pub usdc_in: u64,
+    pub asset_qty: u64,
+}
+
 #[error_code]
 pub enum StockWeaveError {
     #[msg("Signer is not the strategy creator/authority.")]
@@ -787,4 +944,10 @@ pub enum StockWeaveError {
     BadApprovalNonce,
     #[msg("Proposal is not in the required state.")]
     BadProposalState,
+    #[msg("Faucet amount must be > 0 and <= 1,000,000 USDC.")]
+    BadFaucetAmount,
+    #[msg("Subscription amounts must be positive.")]
+    BadSubscription,
+    #[msg("Asset is disabled for this strategy.")]
+    AssetDisabled,
 }
