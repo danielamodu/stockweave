@@ -1,10 +1,14 @@
 /**
  * Stage 6 verifier — REAL on-chain buy round-trip on Devnet (no IDL, hand-encoded).
- *   faucet_usdc  → mint capped Devnet test-USDC to the buyer
- *   subscribe    → buyer pays USDC into the treasury, program mints the mirror
- *                  asset to the buyer (vault PDA authority; NO server key)
+ *   faucet_usdc     → mint capped Devnet test-USDC to the buyer
+ *   set_asset_price → creator publishes the on-chain price the buy is bound to (D-703)
+ *   subscribe       → buyer pays USDC into the treasury, program mints the mirror
+ *                     asset to the buyer (vault PDA authority; NO server key), but only
+ *                     if usdc_in honors the published price within tolerance
  * then reads the buyer's real token balances to prove the wallet genuinely holds
- * the basket asset. Uses the deploy wallet as the buyer (any signer works).
+ * the basket asset. A NEGATIVE case then tries to mint the same asset for ~1% of its
+ * price and asserts the price-binding guard rejects it (no balances move).
+ * Uses the deploy wallet as the buyer (= OFFICIAL_CREATOR, so it can publish the price).
  *
  * Assertions use before+delta, so re-runs still PASS (balances just accumulate).
  * Writes tests/stage06-buy-evidence.json.
@@ -49,6 +53,7 @@ async function main() {
   const vault = pda([Buffer.from("vault")]);
   const strategy = pda([Buffer.from("strategy"), OFFICIAL_CREATOR.toBuffer(), Buffer.from(BASKET_ID)]);
   const asset = pda([Buffer.from("asset"), strategy.toBuffer(), assetMint.toBuffer()]);
+  const assetPrice = pda([Buffer.from("price"), strategy.toBuffer(), assetMint.toBuffer()]);
   const buyerUsdc = ata(buyer.publicKey, usdcMint);
   const buyerAsset = ata(buyer.publicKey, assetMint);
   const treasuryUsdc = ata(vault, usdcMint);
@@ -80,25 +85,50 @@ async function main() {
   const faucetSig = await sendAndConfirmTransaction(connection, new Transaction().add(faucetIx), [buyer], { commitment: "confirmed" });
   console.log("faucet tx:   ", faucetSig);
 
-  // 2) subscribe: pay 100 USDC into the treasury, mint 1.0 OPENAI to the buyer
+  // 1b) publish the on-chain price the buy is bound to (D-703): $100.00 per OPENAI
+  // → price_u = 100_000_000 (USDC base units per whole token). Creator-signed — the
+  // buyer here is the deploy wallet = OFFICIAL_CREATOR = the strategy creator.
+  const PRICE_U = 100_000_000; // $100.00
+  const setPriceIx = new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: strategy, isSigner: false, isWritable: false },
+      { pubkey: assetMint, isSigner: false, isWritable: false },
+      { pubkey: asset, isSigner: false, isWritable: false },
+      { pubkey: assetPrice, isSigner: false, isWritable: true },
+      { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
+      { pubkey: sys, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([disc("set_asset_price"), u64(PRICE_U)]),
+  });
+  const priceSig = await sendAndConfirmTransaction(connection, new Transaction().add(setPriceIx), [buyer], { commitment: "confirmed" });
+  console.log("set price tx:", priceSig, "· $" + (PRICE_U / 1e6).toFixed(2) + "/" + BUY_SYMBOL);
+
+  // Shared account list for subscribe (positive + negative use the same accounts,
+  // only the amounts differ). asset_price is bound in right after the asset PDA.
+  const subKeys = [
+    { pubkey: strategy, isSigner: false, isWritable: false },
+    { pubkey: assetMint, isSigner: false, isWritable: true },
+    { pubkey: usdcMint, isSigner: false, isWritable: false },
+    { pubkey: asset, isSigner: false, isWritable: false },
+    { pubkey: assetPrice, isSigner: false, isWritable: false },
+    { pubkey: vault, isSigner: false, isWritable: false },
+    { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
+    { pubkey: buyerAsset, isSigner: false, isWritable: true },
+    { pubkey: buyerUsdc, isSigner: false, isWritable: true },
+    { pubkey: treasuryUsdc, isSigner: false, isWritable: true },
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: ATA_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: sys, isSigner: false, isWritable: false },
+  ];
+
+  // 2) subscribe: pay 100 USDC into the treasury, mint 1.0 OPENAI to the buyer.
+  // At $100/token this honors the published price exactly (100 USDC ⇄ 1.0 token).
   const usdcIn = 100_000_000; // 100 USDC (6 dp)
   const assetQty = 1_000_000_000; // 1.0 asset (9 dp)
   const subIx = new TransactionInstruction({
     programId: PROGRAM_ID,
-    keys: [
-      { pubkey: strategy, isSigner: false, isWritable: false },
-      { pubkey: assetMint, isSigner: false, isWritable: true },
-      { pubkey: usdcMint, isSigner: false, isWritable: false },
-      { pubkey: asset, isSigner: false, isWritable: false },
-      { pubkey: vault, isSigner: false, isWritable: false },
-      { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
-      { pubkey: buyerAsset, isSigner: false, isWritable: true },
-      { pubkey: buyerUsdc, isSigner: false, isWritable: true },
-      { pubkey: treasuryUsdc, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: ATA_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: sys, isSigner: false, isWritable: false },
-    ],
+    keys: subKeys,
     data: Buffer.concat([disc("subscribe"), u64(usdcIn), u64(assetQty)]),
   });
   const subSig = await sendAndConfirmTransaction(connection, new Transaction().add(subIx), [buyer], { commitment: "confirmed" });
@@ -109,11 +139,38 @@ async function main() {
   const treasuryAfter = await bal(connection, treasuryUsdc);
   console.log(`after:   USDC=${usdcAfter}  ${BUY_SYMBOL}=${assetAfter}  treasury=${treasuryAfter}`);
 
+  // 3) NEGATIVE: try to mint another 1.0 OPENAI (worth $100 at the published price)
+  // while paying only $1. The on-chain price-binding guard MUST reject this — the
+  // client-supplied quantity is no longer free money. A gamed buy that landed would
+  // let a subscriber mint unlimited mirror shares for negligible USDC.
+  let rejected = false;
+  let rejectErr = "";
+  const gamedUsdcIn = 1_000_000; // $1 (6 dp)
+  const gamedAssetQty = 1_000_000_000; // 1.0 asset — worth $100, so $1 is ~99% underpaid
+  const gamedIx = new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: subKeys,
+    data: Buffer.concat([disc("subscribe"), u64(gamedUsdcIn), u64(gamedAssetQty)]),
+  });
+  try {
+    const badSig = await sendAndConfirmTransaction(connection, new Transaction().add(gamedIx), [buyer], { commitment: "confirmed" });
+    console.log("gamed tx (SHOULD NOT LAND):", badSig);
+  } catch (e) {
+    rejected = true;
+    rejectErr = e && e.message ? e.message.split("\n")[0] : String(e);
+    console.log("gamed buy rejected on-chain ✓ —", rejectErr);
+  }
+
+  // The rejected attempt must not have moved any balances (guards a silent land).
+  const usdcGamed = await bal(connection, buyerUsdc);
+  const assetGamed = await bal(connection, buyerAsset);
+  const okUnchanged = Math.abs(usdcGamed - usdcAfter) < 1e-6 && Math.abs(assetGamed - assetAfter) < 1e-6;
+
   const okUsdc = Math.abs(usdcBefore + 1000 - 100 - usdcAfter) < 1e-6;
   const okAsset = Math.abs(assetBefore + 1 - assetAfter) < 1e-6;
   const okTreasury = Math.abs(treasuryBefore + 100 - treasuryAfter) < 1e-6;
-  const pass = okUsdc && okAsset && okTreasury;
-  console.log(pass ? "\nPASS — real on-chain buy round-trip verified." : `\nFAIL — usdc:${okUsdc} asset:${okAsset} treasury:${okTreasury}`);
+  const pass = okUsdc && okAsset && okTreasury && rejected && okUnchanged;
+  console.log(pass ? "\nPASS — real on-chain buy round-trip + price-guard rejection verified." : `\nFAIL — usdc:${okUsdc} asset:${okAsset} treasury:${okTreasury} rejected:${rejected} unchanged:${okUnchanged}`);
 
   const evidence = {
     stage: "6-devnet-mirror-buy",
@@ -126,8 +183,12 @@ async function main() {
     strategy: strategy.toBase58(),
     vault: vault.toBase58(),
     treasuryUsdc: treasuryUsdc.toBase58(),
+    priceU: PRICE_U,
+    priceUsd: PRICE_U / 1e6,
+    setPriceTx: priceSig,
     faucetTx: faucetSig,
     subscribeTx: subSig,
+    gamed: { usdcIn: gamedUsdcIn, assetQty: gamedAssetQty, rejected, rejectErr, balancesUnchanged: okUnchanged },
     balances: { usdcBefore, usdcAfter, assetBefore, assetAfter, treasuryBefore, treasuryAfter },
     pass,
     ts: new Date().toISOString(),

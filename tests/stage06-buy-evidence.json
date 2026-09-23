@@ -9,16 +9,26 @@
   "strategy": "121GcmWFcZjFUumvqzVvUWdXNcyTUi91UXEP63HsyDZD",
   "vault": "7Wc91P6G3dL7vw9Mq9Jf6JTyXRGApYZj5uQe1a3JWPo7",
   "treasuryUsdc": "fqCQA6sVSA9RBAkG72KV6XdvJjgYuJfhYs3JoZF8b7j",
-  "faucetTx": "2gbbUHJAWFXEDViZ9XDaWSxKhwoJpqiDbH21dfHNSmJ5MK8HGZpaa8LGYqrKgvQ2MxuKxPfPogxAmwinWkR7wMYZ",
-  "subscribeTx": "Xw2dWAmjAaZ6iZmtFEABiwuP6jTgend3mJ2XPd8vtAFLBF6swvcsBuNNT1waXhR54b3YsRDHpfuzKY3F3KdSqFm",
+  "priceU": 100000000,
+  "priceUsd": 100,
+  "setPriceTx": "42SEYMuwZQ3HkLVTCiVVzew9nB1iMLPdNTyWwfrPu8Xm5AkzKiZJVfRnT4VMqsaWnjLBWY9oiJM7fy1zje8GNeNt",
+  "faucetTx": "3eeuuBMSdxn7Zmmzr4afUFxoDP3jAFrH82RvsxBbEjygJZVAR9PgV93vEnyMnpkg4D7S92w4r2KjMMTEqRFiUS5R",
+  "subscribeTx": "4R8j4o4P6rYbkYGYFX66WpNnmVMRQ2sHkCCDhkGHAvJ5na2ttYAEYypR5gpgRvxoCfgE4isH2EtTxzMypjoZBjDU",
+  "gamed": {
+    "usdcIn": 1000000,
+    "assetQty": 1000000000,
+    "rejected": true,
+    "rejectErr": "Simulation failed. ",
+    "balancesUnchanged": true
+  },
   "balances": {
-    "usdcBefore": 0,
-    "usdcAfter": 900,
-    "assetBefore": 0,
-    "assetAfter": 1,
-    "treasuryBefore": 0,
-    "treasuryAfter": 100
+    "usdcBefore": 1005,
+    "usdcAfter": 1905,
+    "assetBefore": 1.6,
+    "assetAfter": 2.6,
+    "treasuryBefore": 195,
+    "treasuryAfter": 295
   },
   "pass": true,
-  "ts": "2026-09-23T10:57:05.164Z"
+  "ts": "2026-09-23T19:47:32.704Z"
 }

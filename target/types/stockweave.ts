@@ -116,5 +116,13 @@ export interface RebalanceProposal {
   "bump": number;
 }
 
+export interface AssetPrice {
+  "strategy": anchor.web3.PublicKey;
+  "mint": anchor.web3.PublicKey;
+  "priceU": anchor.BN;
+  "updatedAt": anchor.BN;
+  "bump": number;
+}
+
 export type StockweaveProgram = Program<typeof IDL>;
 export { IDL as StockweaveIDL };

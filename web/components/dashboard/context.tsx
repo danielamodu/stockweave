@@ -17,9 +17,12 @@ import {
   executeRebalanceOnchain,
   faucetUsdcOnchain,
   OFFICIAL_CREATOR,
+  readAssetPrices,
   readOfficialStrategy,
   readStrategyById,
   readWalletTokenBalances,
+  sizeAssetQtyFromPriceU,
+  strategyAddress,
   subscribeToBasketOnchain,
   type OnchainStrategyState,
   type SubscribeLeg,
@@ -241,15 +244,20 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
           proposalId: proposal.proposalId,
           approvalNonce: proposal.approvalNonce,
         });
-        // Size the on-chain trim: burn the asset-quantity worth `notional` USDC at
-        // the live price (9 dp mirror mints); the USDC leg is fixed on-chain by the
-        // guarded notional. Requires seeded mirror mints + a live price for the pick.
+        // Size the on-chain trim: burn the asset-quantity worth `notional` USDC,
+        // bound to an on-chain PUBLISHED price (D-703). The execute tx publishes a
+        // fresh price for the pick (creator-signed — this branch only runs when the
+        // wallet IS the strategy creator, i.e. its own fork) and the program checks
+        // assetQty against it. priceU = USDC base units (6 dp) per whole token; we
+        // size assetQty from priceU so it matches the program's expected_qty within
+        // rounding. The USDC leg stays fixed on-chain by the guarded notional.
         const usdc = devnetUsdc();
         const price = data?.tokenPrices?.find((t) => t.symbol === proposal.symbol)?.price ?? 0;
-        const ASSET_DECIMALS = 9; // mirror stock mints use 9 dp (see seed-devnet-mints.js)
+        const priceU = Math.round(price * 1_000_000);
+        const usdcOutBase = proposal.notional * 1_000_000; // whole USDC → 6 dp base units
         const assetQty =
-          usdc?.mint && price > 0 ? Math.floor((proposal.notional / price) * 10 ** ASSET_DECIMALS) : 0;
-        if (assetQty > 0 && usdc?.mint) {
+          usdc?.mint && priceU > 0 ? Number(sizeAssetQtyFromPriceU(usdcOutBase, priceU)) : 0;
+        if (assetQty > 0 && usdc?.mint && priceU > 0) {
           const execSig = await executeRebalanceOnchain({
             connection,
             walletPublicKey: publicKey,
@@ -259,6 +267,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
             assetMint: new PublicKey(proposal.mint),
             usdcMint: new PublicKey(usdc.mint),
             assetQty,
+            priceU,
           });
           setApproved(true);
           setActivity((a) => [
@@ -477,9 +486,12 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
 
   // Buy the followed mix on-chain: split the wallet's test-USDC across the
   // non-cash constituents by their target weights (the cash-reserve weight simply
-  // stays as USDC), sizing each leg from the REAL live price. Subscribes to the
-  // official strategy — whose asset PDAs are bound to the mirror mints — so the
-  // program mints the buyer the real mirror tokens and the wallet holds the mix.
+  // stays as USDC). Each leg's asset quantity is sized from the asset's on-chain
+  // PUBLISHED price (D-703) — the program binds subscribe's asset_qty to
+  // asset.price_u within tolerance, so sizing from that same integer price keeps
+  // the only difference to rounding. Subscribes to the official strategy — whose
+  // asset PDAs are bound to the mirror mints — so the program mints the buyer the
+  // real mirror tokens and the wallet holds the mix.
   const buyBasket = useCallback(async () => {
     const usdc = devnetUsdc();
     if (!publicKey || !usdc?.mint || !followedBasketId || !displayWeights) return;
@@ -488,27 +500,31 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       toast("Get test USDC first.");
       return;
     }
-    const usdcBase = Math.floor(usdcUi * 10 ** usdc.decimals);
-    const ASSET_DECIMALS = 9; // mirror stock mints use 9 dp (see seed-devnet-mints.js)
-    const legs: SubscribeLeg[] = [];
-    for (const s of order) {
-      if (s === "USDC") continue;
-      const mint = mintBySymbol[s];
-      const weightBps = displayWeights[s] ?? 0;
-      const price = priceBySym[s]?.price ?? 0;
-      if (!mint || weightBps <= 0 || price <= 0) continue;
-      const usdcIn = Math.floor((usdcBase * weightBps) / 10_000);
-      if (usdcIn <= 0) continue;
-      const assetQty = Math.floor((usdcIn / 10 ** usdc.decimals / price) * 10 ** ASSET_DECIMALS);
-      if (assetQty <= 0) continue;
-      legs.push({ assetMint: mint, usdcIn, assetQty });
-    }
-    if (legs.length === 0) {
-      toast("Nothing to buy — no priced assets in this mix.");
-      return;
-    }
     setBuying(true);
     try {
+      const usdcBase = Math.floor(usdcUi * 10 ** usdc.decimals);
+      const strategyPk = strategyAddress(OFFICIAL_CREATOR, followedBasketId);
+      // Published on-chain prices for this strategy, keyed by mint. A mint with no
+      // published price is skipped (its subscribe would revert PriceUnavailable).
+      const published = await readAssetPrices(connection, strategyPk);
+      const legs: SubscribeLeg[] = [];
+      for (const s of order) {
+        if (s === "USDC") continue;
+        const mint = mintBySymbol[s];
+        const weightBps = displayWeights[s] ?? 0;
+        if (!mint || weightBps <= 0) continue;
+        const priceU = published[mint]?.priceU ?? 0;
+        if (priceU <= 0) continue; // no on-chain price → subscribe would revert
+        const usdcIn = Math.floor((usdcBase * weightBps) / 10_000);
+        if (usdcIn <= 0) continue;
+        const assetQty = Number(sizeAssetQtyFromPriceU(usdcIn, priceU));
+        if (assetQty <= 0) continue;
+        legs.push({ assetMint: mint, usdcIn, assetQty });
+      }
+      if (legs.length === 0) {
+        toast("Nothing to buy — no on-chain price published for this mix yet.");
+        return;
+      }
       const { signatures } = await subscribeToBasketOnchain({
         connection,
         walletPublicKey: publicKey,
@@ -529,7 +545,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       setBuying(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicKey, connection, sendTransaction, followedBasketId, displayWeights, tokenAmounts, order, mintBySymbol, priceBySym]);
+  }, [publicKey, connection, sendTransaction, followedBasketId, displayWeights, tokenAmounts, order, mintBySymbol]);
 
   const donutSegs = useMemo(
     () =>

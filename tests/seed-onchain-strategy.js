@@ -5,11 +5,12 @@
  *   initialize_strategy(id)             only when the Strategy PDA is missing
  *   set_rules(guardrails)               per-basket cash reserve; self-heals
  *   set_assets(mint, target, max)       one per non-cash constituent
+ *   set_asset_price(price_u)            real live Jupiter quote per non-cash mint
  *   set_agent_permission(READ+PROPOSE)  to the backend agent if set, else creator
  *
- * Idempotent + self-healing: initialize runs once; rules/assets/permissions are
- * re-applied safely (init_if_needed), so re-running repairs a partially-seeded
- * basket (missing assets, missing agent grant, wrong reserve).
+ * Idempotent + self-healing: initialize runs once; rules/assets/prices/permissions
+ * are re-applied safely (init_if_needed), so re-running repairs a partially-seeded
+ * basket (missing assets, stale/missing price, missing agent grant, wrong reserve).
  *
  * Env: ANCHOR_WALLET (creator keypair), HELIUS_RPC | ANCHOR_PROVIDER_URL (RPC),
  *      NEXT_PUBLIC_AGENT_PUBKEY | AGENT_PUBKEY (agent to grant PROPOSE).
@@ -20,6 +21,7 @@ const crypto = require("crypto");
 const anchor = require("@coral-xyz/anchor");
 const { listApprovedAssets } = require("../lib/asset-registry");
 const { getBasket } = require("../lib/baskets");
+const { fetchLivePricesBySymbol } = require("../lib/live-prices");
 const { Connection, PublicKey, Keypair, TransactionInstruction, Transaction, SystemProgram, sendAndConfirmTransaction } =
   anchor.web3;
 
@@ -99,6 +101,26 @@ async function main() {
   const sys = SystemProgram.programId;
   const expiry = Math.floor(Date.now() / 1000) + 365 * 86400;
 
+  // Fetch REAL live USD prices (Jupiter, via the mainnet mints) for every non-cash
+  // constituent, so each strategy's on-chain price is bound to a genuine market
+  // quote — not a fabricated number. Published per mirror mint by set_asset_price
+  // below; subscribe/execute revert (PriceUnavailable) for any asset left unpriced.
+  const priceSymbols = [...new Set(BASKETS.flatMap((id) => getBasket(id).constituents.filter((c) => c.symbol !== "USDC").map((c) => c.symbol)))];
+  const priceUBySym = {};
+  try {
+    const live = await fetchLivePricesBySymbol(priceSymbols);
+    for (const sym of priceSymbols) {
+      const px = live[sym] && Number(live[sym].price);
+      if (px && px > 0) priceUBySym[sym] = Math.round(px * 1_000_000); // USDC base units (6dp) per whole token
+    }
+    const priced = Object.keys(priceUBySym);
+    console.log(`Live prices fetched for ${priced.length}/${priceSymbols.length}: ${priced.map((s) => `${s}=$${(priceUBySym[s] / 1e6).toFixed(2)}`).join(", ") || "(none)"}`);
+    const missing = priceSymbols.filter((s) => !(s in priceUBySym));
+    if (missing.length) console.log(`  ⚠ no live price for ${missing.join(", ")} — buy/execute will revert PriceUnavailable until priced.`);
+  } catch (e) {
+    console.log(`  ⚠ live price fetch failed (${String((e && e.message) || e)}) — seeding without prices; buy/execute stay disabled until re-run.`);
+  }
+
   // set_agent_permission(READ|PROPOSE=0b011, per-action 50, daily 200, expiry +1y)
   const permIxFor = (strategy, agentKey) =>
     new TransactionInstruction({
@@ -153,21 +175,42 @@ async function main() {
       ]),
     }));
     // set_assets — one per non-cash constituent (mint bound into the asset PDA).
+    // Immediately follow each with set_asset_price when a live quote exists, so the
+    // asset is priced the moment it's registered (same tx/batch order guarantees the
+    // asset PDA is created before the price PDA that constraint-checks against it).
+    let pricedCount = 0;
     for (const c of nonCash) {
       const mint = mintOf[c.symbol];
       if (!mint) throw new Error(`No approved mint for ${id}/${c.symbol}`);
       const mintPk = new PublicKey(mint);
+      const assetPk = pda([Buffer.from("asset"), strategy.toBuffer(), mintPk.toBuffer()]);
       ixs.push(new TransactionInstruction({
         programId: PROGRAM_ID,
         keys: [
           { pubkey: strategy, isSigner: false, isWritable: true },
-          { pubkey: pda([Buffer.from("asset"), strategy.toBuffer(), mintPk.toBuffer()]), isSigner: false, isWritable: true },
+          { pubkey: assetPk, isSigner: false, isWritable: true },
           { pubkey: mintPk, isSigner: false, isWritable: false },
           { pubkey: creator.publicKey, isSigner: true, isWritable: true },
           { pubkey: sys, isSigner: false, isWritable: false },
         ],
         data: Buffer.concat([disc("set_assets"), u16(c.targetBps), u16(MAX_SINGLE_BPS)]),
       }));
+      const priceU = priceUBySym[c.symbol];
+      if (priceU) {
+        ixs.push(new TransactionInstruction({
+          programId: PROGRAM_ID,
+          keys: [
+            { pubkey: strategy, isSigner: false, isWritable: false },
+            { pubkey: mintPk, isSigner: false, isWritable: false },
+            { pubkey: assetPk, isSigner: false, isWritable: false },
+            { pubkey: pda([Buffer.from("price"), strategy.toBuffer(), mintPk.toBuffer()]), isSigner: false, isWritable: true },
+            { pubkey: creator.publicKey, isSigner: true, isWritable: true },
+            { pubkey: sys, isSigner: false, isWritable: false },
+          ],
+          data: Buffer.concat([disc("set_asset_price"), u64(priceU)]),
+        }));
+        pricedCount++;
+      }
     }
 
     // Always (re)grant the creator; grant the backend agent too when configured.
@@ -177,7 +220,7 @@ async function main() {
     const sigs = await sendBatched(connection, creator, ixs);
     const grant = agent && !agent.equals(creator.publicKey) ? "agent+creator" : "creator";
     console.log(
-      `  ${exists ? "healed" : "seeded"} in ${sigs.length} tx (${grant}); rules=${rules.toBase58()} reserve=${reserveBps}bps assets=${nonCash.length}`,
+      `  ${exists ? "healed" : "seeded"} in ${sigs.length} tx (${grant}); rules=${rules.toBase58()} reserve=${reserveBps}bps assets=${nonCash.length} priced=${pricedCount}`,
     );
   }
 

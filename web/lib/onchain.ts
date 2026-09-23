@@ -42,6 +42,9 @@ const IX = {
   // Stage 6 — Devnet mirror buy/faucet (see programs/stockweave/src/lib.rs).
   faucet_usdc: Uint8Array.from([190, 45, 226, 28, 94, 130, 98, 127]),
   subscribe: Uint8Array.from([254, 28, 191, 138, 156, 179, 183, 53]),
+  // D-703 — publish/refresh an asset's on-chain price (creator-signed). subscribe
+  // and execute_rebalance bind their token quantity to it within tolerance.
+  set_asset_price: Uint8Array.from([153, 17, 107, 170, 189, 135, 141, 170]),
 } as const;
 const FORK_DISC = IX.fork_strategy;
 
@@ -50,6 +53,7 @@ const ACC = {
   Strategy: Uint8Array.from([174, 110, 39, 119, 82, 106, 169, 102]),
   StrategyAsset: Uint8Array.from([24, 194, 2, 138, 13, 96, 102, 51]),
   RebalanceProposal: Uint8Array.from([144, 76, 53, 190, 165, 195, 179, 53]),
+  AssetPrice: Uint8Array.from([197, 106, 216, 207, 155, 172, 40, 245]),
 } as const;
 
 // Little-endian scalar encoders (borsh).
@@ -100,6 +104,8 @@ const permissionPda = (strategy: PublicKey, agent: PublicKey) =>
   findPda([Buffer.from("permission"), strategy.toBuffer(), agent.toBuffer()]);
 const assetPda = (strategy: PublicKey, mint: PublicKey) =>
   findPda([Buffer.from("asset"), strategy.toBuffer(), mint.toBuffer()]);
+const pricePda = (strategy: PublicKey, mint: PublicKey) =>
+  findPda([Buffer.from("price"), strategy.toBuffer(), mint.toBuffer()]);
 const proposalPda = (strategy: PublicKey, proposalId: number | bigint) =>
   findPda([Buffer.from("proposal"), strategy.toBuffer(), u64(proposalId)]);
 
@@ -403,14 +409,41 @@ export async function approveRebalanceOnchain(params: {
   return sendIxs(connection, walletPublicKey, sendTransaction, [ix]);
 }
 
+// Build a set_asset_price instruction (creator-signed). Account order MUST match
+// the SetAssetPrice struct in programs/stockweave/src/lib.rs. price_u is USDC base
+// units (6 dp) per WHOLE asset token.
+function buildSetAssetPriceIx(
+  strategy: PublicKey,
+  assetMint: PublicKey,
+  creator: PublicKey,
+  priceU: number | bigint,
+): TransactionInstruction {
+  if (BigInt(priceU) <= BigInt(0)) throw new Error("price_u must be positive");
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: strategy, isSigner: false, isWritable: false },
+      { pubkey: assetMint, isSigner: false, isWritable: false },
+      { pubkey: assetPda(strategy, assetMint), isSigner: false, isWritable: false },
+      { pubkey: pricePda(strategy, assetMint), isSigner: false, isWritable: true },
+      { pubkey: creator, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([Buffer.from(IX.set_asset_price), u64(priceU)]),
+  });
+}
+
 // Creator finalizes an approved proposal — a REAL Devnet-mirror trim (Stage 7,
 // D-702): the program BURNS `assetQty` of the mirror asset from the creator and
 // TRANSFERS the proposal's notional (whole USDC → 6 dp) from the strategy
 // treasury back to the creator, atomically. `assetQty` is sized off-chain from
-// the live price (shares out, cash in); the USDC leg is fixed on-chain by the
-// guarded `proposal.notional`. Account order MUST match the ExecuteRebalance
-// struct in programs/stockweave/src/lib.rs exactly. Creator-only (has_one);
-// the agent never signs execute.
+// the published price; the USDC leg is fixed on-chain by the guarded
+// `proposal.notional`, and the program binds `assetQty` to that price within
+// tolerance (D-703). Pass `priceU` to publish/refresh that price in the SAME
+// transaction (creator signs once) so the guard has a fresh price to check
+// against. Account order MUST match the ExecuteRebalance struct in
+// programs/stockweave/src/lib.rs exactly. Creator-only (has_one); the agent
+// never signs execute.
 export async function executeRebalanceOnchain(params: {
   connection: Connection;
   walletPublicKey: PublicKey;
@@ -420,8 +453,9 @@ export async function executeRebalanceOnchain(params: {
   assetMint: PublicKey;
   usdcMint: PublicKey;
   assetQty: number | bigint;
+  priceU?: number | bigint; // when set, prepend set_asset_price in the same tx
 }): Promise<string> {
-  const { connection, walletPublicKey, sendTransaction, strategy, proposalId, assetMint, usdcMint, assetQty } = params;
+  const { connection, walletPublicKey, sendTransaction, strategy, proposalId, assetMint, usdcMint, assetQty, priceU } = params;
   if (BigInt(assetQty) <= BigInt(0)) throw new Error("Execute amount (asset quantity to trim) must be positive");
   const vault = vaultPda();
   const ix = new TransactionInstruction({
@@ -430,6 +464,7 @@ export async function executeRebalanceOnchain(params: {
       { pubkey: strategy, isSigner: false, isWritable: false },
       { pubkey: proposalPda(strategy, proposalId), isSigner: false, isWritable: true },
       { pubkey: assetPda(strategy, assetMint), isSigner: false, isWritable: false },
+      { pubkey: pricePda(strategy, assetMint), isSigner: false, isWritable: false },
       { pubkey: assetMint, isSigner: false, isWritable: true },
       { pubkey: usdcMint, isSigner: false, isWritable: false },
       { pubkey: vault, isSigner: false, isWritable: false },
@@ -443,7 +478,10 @@ export async function executeRebalanceOnchain(params: {
     ],
     data: Buffer.concat([Buffer.from(IX.execute_rebalance), u64(assetQty)]),
   });
-  return sendIxs(connection, walletPublicKey, sendTransaction, [ix]);
+  const ixs = priceU && BigInt(priceU) > BigInt(0)
+    ? [buildSetAssetPriceIx(strategy, assetMint, walletPublicKey, priceU), ix]
+    : [ix];
+  return sendIxs(connection, walletPublicKey, sendTransaction, ixs);
 }
 
 // Exported address helpers so the backend agent service can derive the same PDAs
@@ -563,6 +601,50 @@ export async function listStrategyAssets(connection: Connection, strategy: Publi
   return accts
     .filter((a) => discEq(a.account.data, ACC.StrategyAsset))
     .map((a) => decodeAsset(Buffer.from(a.account.data)));
+}
+
+// D-703 price binding. price_u is USDC base units (6 dp) per WHOLE asset token.
+export type OnchainAssetPrice = { mint: string; priceU: number; updatedAt: number };
+// AssetPrice: disc(8) + strategy(32) + mint(32) + price_u(u64) + updated_at(i64) + bump(u8).
+function decodeAssetPrice(data: Buffer): OnchainAssetPrice {
+  let o = 8 + 32; // disc + strategy pubkey
+  const mint = new PublicKey(data.subarray(o, o + 32)); o += 32;
+  const priceU = Number(data.readBigUInt64LE(o)); o += 8;
+  const updatedAt = Number(data.readBigUInt64LE(o)); // always a positive unix ts
+  return { mint: mint.toBase58(), priceU, updatedAt };
+}
+// Published prices for a strategy, keyed by mint. Absent = never published (a
+// subscribe/execute against it reverts PriceUnavailable on-chain).
+export async function readAssetPrices(
+  connection: Connection,
+  strategy: PublicKey,
+): Promise<Record<string, OnchainAssetPrice>> {
+  const accts = await connection.getProgramAccounts(PROGRAM_ID, {
+    filters: [{ memcmp: { offset: 8, bytes: strategy.toBase58() } }],
+  });
+  const out: Record<string, OnchainAssetPrice> = {};
+  for (const a of accts) {
+    if (!discEq(a.account.data, ACC.AssetPrice)) continue;
+    const p = decodeAssetPrice(Buffer.from(a.account.data));
+    out[p.mint] = p;
+  }
+  return out;
+}
+
+// The on-chain price-binding tolerance (must match PRICE_TOLERANCE_BPS in the
+// program). Sizing a quantity from the SAME price the program checks keeps the
+// only difference to integer rounding, comfortably inside this band.
+export const PRICE_TOLERANCE_BPS = 100; // 1%
+// Mirror asset mints are 9 dp. Size a token quantity from a usdc base-unit amount
+// and the published price so the on-chain check passes: qty = usdcIn * 10^dec / price_u.
+export function sizeAssetQtyFromPriceU(
+  usdcInBaseUnits: number | bigint,
+  priceU: number | bigint,
+  assetDecimals = 9,
+): bigint {
+  const p = BigInt(priceU);
+  if (p <= BigInt(0)) throw new Error("price_u must be positive");
+  return (BigInt(usdcInBaseUnits) * BigInt(10) ** BigInt(assetDecimals)) / p;
 }
 
 // SPL token program ids. PreStocks mints are Token-2022; USDC is the classic
@@ -720,6 +802,7 @@ export async function subscribeToBasketOnchain(params: {
         { pubkey: assetMint, isSigner: false, isWritable: true },
         { pubkey: usdcMint, isSigner: false, isWritable: false },
         { pubkey: assetPda(strategy, assetMint), isSigner: false, isWritable: false },
+        { pubkey: pricePda(strategy, assetMint), isSigner: false, isWritable: false },
         { pubkey: vault, isSigner: false, isWritable: false },
         { pubkey: walletPublicKey, isSigner: true, isWritable: true },
         { pubkey: ataFor(walletPublicKey, assetMint), isSigner: false, isWritable: true },
@@ -740,3 +823,22 @@ export async function subscribeToBasketOnchain(params: {
   }
   return { signatures, strategy: strategy.toBase58() };
 }
+
+// D-703 — publish/refresh one asset's on-chain price (creator-signed). price_u is
+// USDC base units (6 dp) per WHOLE asset token ($100.00 → 100_000_000). Only the
+// strategy creator may call it; on a wallet's own fork the wallet is the creator,
+// so it publishes a fresh price right before executing an approved trim. Account
+// order MUST match the SetAssetPrice struct in programs/stockweave/src/lib.rs.
+export async function setAssetPriceOnchain(params: {
+  connection: Connection;
+  walletPublicKey: PublicKey;
+  sendTransaction: SendFn;
+  strategy: PublicKey;
+  assetMint: PublicKey;
+  priceU: number | bigint;
+}): Promise<string> {
+  const { connection, walletPublicKey, sendTransaction, strategy, assetMint, priceU } = params;
+  const ix = buildSetAssetPriceIx(strategy, assetMint, walletPublicKey, priceU);
+  return sendIxs(connection, walletPublicKey, sendTransaction, [ix]);
+}
+export const priceAddress = (strategy: PublicKey, mint: PublicKey) => pricePda(strategy, mint);

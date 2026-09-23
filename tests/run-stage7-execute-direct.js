@@ -1,15 +1,18 @@
 /**
  * Stage 7 verifier — REAL on-chain rebalance EXECUTE on Devnet (no IDL, hand-encoded).
  * Proves execute_rebalance actually MOVES mirror tokens (no longer a no-op record):
- *   propose_rebalance → approve_rebalance → execute_rebalance
+ *   set_asset_price → propose_rebalance → approve_rebalance → execute_rebalance
  * execute BURNS `asset_qty` of the mirror asset from the creator (creator signs)
  * and TRANSFERS the proposal's `notional` (whole USDC → 6 dp) from the strategy
  * treasury back to the creator (vault PDA signs) — atomically. Shares out, cash in.
+ * The burn qty is now BOUND to the published on-chain price (D-703): burning too
+ * little for the notional payout is rejected (PriceOutOfBounds), so the treasury
+ * can't be drained. A NEGATIVE case proves exactly that before the real trim runs.
  *
- * The script first faucets USDC + subscribes a leg so the creator provably holds
- * the asset and the treasury holds USDC, then measures balances immediately BEFORE
- * and AFTER the execute so the asserted deltas isolate the trim itself (re-runs
- * still PASS — earlier balances just accumulate). Writes tests/stage07-evidence.json.
+ * The script first publishes the price, then faucets USDC + subscribes a leg so the
+ * creator provably holds the asset and the treasury holds USDC, then measures balances
+ * immediately BEFORE and AFTER the execute so the asserted deltas isolate the trim
+ * (re-runs still PASS — earlier balances just accumulate). Writes tests/stage07-evidence.json.
  *
  * Env: ANCHOR_WALLET (creator keypair — also the strategy's agent), HELIUS_RPC |
  * ANCHOR_PROVIDER_URL (RPC). The creator is the deploy wallet (OFFICIAL_CREATOR).
@@ -53,6 +56,7 @@ async function main() {
   const vault = pda([Buffer.from("vault")]);
   const strategy = pda([Buffer.from("strategy"), OFFICIAL_CREATOR.toBuffer(), Buffer.from(BASKET_ID)]);
   const asset = pda([Buffer.from("asset"), strategy.toBuffer(), assetMint.toBuffer()]);
+  const assetPrice = pda([Buffer.from("price"), strategy.toBuffer(), assetMint.toBuffer()]);
   const rulesPk = pda([Buffer.from("rules"), strategy.toBuffer()]);
   const permission = pda([Buffer.from("permission"), strategy.toBuffer(), creator.publicKey.toBuffer()]);
   const creatorAsset = ata(creator.publicKey, assetMint);
@@ -85,8 +89,25 @@ async function main() {
   console.log("proposal:", proposalPk.toBase58(), "id", proposalId.toString());
   console.log(`args:     notional=$${notional} newTargetBps=${newTargetWeightBps} reserveBps=${reserveBps}`);
 
-  // 0) Guarantee state: faucet USDC + subscribe one leg so the creator holds the
-  //    asset (to burn) and the treasury holds USDC (to pay out).
+  // 0) Guarantee state: publish the on-chain price the execute is bound to (D-703),
+  //    then faucet USDC + subscribe one leg so the creator holds the asset (to burn)
+  //    and the treasury holds USDC (to pay out). $100.00 per OPENAI → price_u=100e6.
+  const PRICE_U = 100_000_000; // USDC base units (6dp) per whole 9dp token
+  const setPriceIx = new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: strategy, isSigner: false, isWritable: false },
+      { pubkey: assetMint, isSigner: false, isWritable: false },
+      { pubkey: asset, isSigner: false, isWritable: false },
+      { pubkey: assetPrice, isSigner: false, isWritable: true },
+      { pubkey: creator.publicKey, isSigner: true, isWritable: true },
+      { pubkey: sys, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([disc("set_asset_price"), u64(PRICE_U)]),
+  });
+  const priceSig = await sendAndConfirmTransaction(connection, new Transaction().add(setPriceIx), [creator], { commitment: "confirmed" });
+  console.log("set price tx:", priceSig, "· $" + (PRICE_U / 1e6).toFixed(2) + "/" + TRIM_SYMBOL);
+
   const faucetIx = new TransactionInstruction({
     programId: PROGRAM_ID,
     keys: [
@@ -107,6 +128,7 @@ async function main() {
       { pubkey: assetMint, isSigner: false, isWritable: true },
       { pubkey: usdcMint, isSigner: false, isWritable: false },
       { pubkey: asset, isSigner: false, isWritable: false },
+      { pubkey: assetPrice, isSigner: false, isWritable: false },
       { pubkey: vault, isSigner: false, isWritable: false },
       { pubkey: creator.publicKey, isSigner: true, isWritable: true },
       { pubkey: creatorAsset, isSigner: false, isWritable: true },
@@ -168,29 +190,58 @@ async function main() {
   const midTreasury = await bal(connection, treasuryUsdc);
   console.log(`before execute: ${TRIM_SYMBOL}=${midAsset} USDC=${midUsdc} treasury=${midTreasury}`);
 
-  // 3) execute_rebalance — REAL trim: burn asset_qty from creator, return notional USDC.
-  const assetQtyTrim = 400_000_000; // 0.4 mirror asset (9 dp), safely ≤ holdings
-  const executeIx = new TransactionInstruction({
+  // Shared account list for execute (positive + negative differ only in asset_qty).
+  // asset_price is bound in right after the asset PDA — it's what the burn qty must honor.
+  const execKeys = [
+    { pubkey: strategy, isSigner: false, isWritable: false },
+    { pubkey: proposalPk, isSigner: false, isWritable: true },
+    { pubkey: asset, isSigner: false, isWritable: false },
+    { pubkey: assetPrice, isSigner: false, isWritable: false },
+    { pubkey: assetMint, isSigner: false, isWritable: true },
+    { pubkey: usdcMint, isSigner: false, isWritable: false },
+    { pubkey: vault, isSigner: false, isWritable: false },
+    { pubkey: creator.publicKey, isSigner: true, isWritable: true },
+    { pubkey: creatorAsset, isSigner: false, isWritable: true },
+    { pubkey: creatorUsdc, isSigner: false, isWritable: true },
+    { pubkey: treasuryUsdc, isSigner: false, isWritable: true },
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: ATA_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: sys, isSigner: false, isWritable: false },
+  ];
+  const mkExecuteIx = (qty) => new TransactionInstruction({
     programId: PROGRAM_ID,
-    keys: [
-      { pubkey: strategy, isSigner: false, isWritable: false },
-      { pubkey: proposalPk, isSigner: false, isWritable: true },
-      { pubkey: asset, isSigner: false, isWritable: false },
-      { pubkey: assetMint, isSigner: false, isWritable: true },
-      { pubkey: usdcMint, isSigner: false, isWritable: false },
-      { pubkey: vault, isSigner: false, isWritable: false },
-      { pubkey: creator.publicKey, isSigner: true, isWritable: true },
-      { pubkey: creatorAsset, isSigner: false, isWritable: true },
-      { pubkey: creatorUsdc, isSigner: false, isWritable: true },
-      { pubkey: treasuryUsdc, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: ATA_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: sys, isSigner: false, isWritable: false },
-    ],
-    data: Buffer.concat([disc("execute_rebalance"), u64(assetQtyTrim)]),
+    keys: execKeys,
+    data: Buffer.concat([disc("execute_rebalance"), u64(qty)]),
   });
-  const executeSig = await sendAndConfirmTransaction(connection, new Transaction().add(executeIx), [creator], { commitment: "confirmed" });
-  console.log("execute tx: ", executeSig);
+
+  // At $100/token, returning `notional` whole USDC must burn notional*1e7 base units
+  // (notional*1e6 USDC base units × 1e9 scale ÷ price_u). The guard binds qty↔notional.
+  const assetQtyTrim = Number((BigInt(notional) * BigInt(1_000_000) * BigInt(1_000_000_000)) / BigInt(PRICE_U));
+
+  // 3a) NEGATIVE: keep the full `notional` USDC payout but try to burn a token dust
+  // (0.0001 asset). This is the exact exploit the guard exists for — draining the
+  // treasury while burning ~0 shares. It MUST revert, leaving the proposal Approved.
+  let rejected = false;
+  let rejectErr = "";
+  const gamedQty = 100_000; // 0.0001 asset — ~nothing burned for a full-notional payout
+  try {
+    const badSig = await sendAndConfirmTransaction(connection, new Transaction().add(mkExecuteIx(gamedQty)), [creator], { commitment: "confirmed" });
+    console.log("gamed execute (SHOULD NOT LAND):", badSig);
+  } catch (e) {
+    rejected = true;
+    rejectErr = e && e.message ? e.message.split("\n")[0] : String(e);
+    console.log("gamed execute rejected on-chain ✓ —", rejectErr);
+  }
+  // Proposal must still be Approved (1), not Executed — the reverted attempt can't consume it.
+  const gInfo = await connection.getAccountInfo(proposalPk);
+  const gStatus = gInfo ? gInfo.data.readUInt8(189) : -1;
+  const gAsset = await bal(connection, creatorAsset);
+  const gTreasury = await bal(connection, treasuryUsdc);
+  const okRejected = rejected && gStatus === 1 && Math.abs(gAsset - midAsset) < 1e-6 && Math.abs(gTreasury - midTreasury) < 1e-6;
+
+  // 3b) execute_rebalance — REAL trim: burn assetQtyTrim from creator, return notional USDC.
+  const executeSig = await sendAndConfirmTransaction(connection, new Transaction().add(mkExecuteIx(assetQtyTrim)), [creator], { commitment: "confirmed" });
+  console.log("execute tx: ", executeSig, "· burn", assetQtyTrim / 1e9, TRIM_SYMBOL, "for $" + notional);
 
   const afterAsset = await bal(connection, creatorAsset);
   const afterUsdc = await bal(connection, creatorUsdc);
@@ -205,13 +256,13 @@ async function main() {
   const propInfo = await connection.getAccountInfo(proposalPk);
   const status = propInfo ? propInfo.data.readUInt8(189) : -1;
   const okStatus = status === 2;
-  const pass = okBurn && okUsdc && okTreasury && okStatus;
-  console.log(pass ? "\nPASS — real on-chain rebalance trim moved tokens." : `\nFAIL — burn:${okBurn} usdc:${okUsdc} treasury:${okTreasury} status:${okStatus}(${status})`);
+  const pass = okBurn && okUsdc && okTreasury && okStatus && okRejected;
+  console.log(pass ? "\nPASS — real trim moved tokens + price-guard rejected the drained-treasury attempt." : `\nFAIL — burn:${okBurn} usdc:${okUsdc} treasury:${okTreasury} status:${okStatus}(${status}) rejected:${okRejected}`);
 
   const evidence = {
     stage: "7-devnet-execute-rebalance",
     programId: PROGRAM_ID.toBase58(),
-    upgradeTx: "2cXDb5iyZWjVdLuFFLoZ59Tswy3833d5UbLWGMGuLD9r6zzPg2UXFeUzzNpRgeyVwbCsmnmn94g6wbaYUetMrqpX",
+    upgradeTx: "3mSTDS4rgDYZMmpbb3WLvDn7qY35d92GiGHmBhDf1FrARzFFiHmrU6ehjctVCmk1SBoizovAiNnuBriMyXNt2xKz",
     creator: creator.publicKey.toBase58(),
     basket: BASKET_ID,
     symbol: TRIM_SYMBOL,
@@ -223,7 +274,11 @@ async function main() {
     vault: vault.toBase58(),
     treasuryUsdc: treasuryUsdc.toBase58(),
     notional,
+    priceU: PRICE_U,
+    priceUsd: PRICE_U / 1e6,
     assetBurned: burnedUi,
+    gamed: { qty: gamedQty, rejected, rejectErr, proposalStatusAfter: gStatus, balancesUnchanged: okRejected },
+    setPriceTx: priceSig,
     setupTx: setupSig,
     proposeTx: proposeSig,
     approveTx: approveSig,

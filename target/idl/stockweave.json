@@ -379,6 +379,11 @@
           "signer": false
         },
         {
+          "name": "asset_price",
+          "writable": false,
+          "signer": false
+        },
+        {
           "name": "asset_mint",
           "writable": true,
           "signer": false
@@ -432,6 +437,58 @@
       "args": [
         {
           "name": "asset_qty",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_asset_price",
+      "discriminator": [
+        153,
+        17,
+        107,
+        170,
+        189,
+        135,
+        141,
+        170
+      ],
+      "accounts": [
+        {
+          "name": "strategy",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "mint",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "asset",
+          "writable": false,
+          "signer": false
+        },
+        {
+          "name": "asset_price",
+          "writable": true,
+          "signer": false
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "writable": false,
+          "signer": false,
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "price_u",
           "type": "u64"
         }
       ]
@@ -559,6 +616,20 @@
         53
       ],
       "space": 191
+    },
+    {
+      "name": "AssetPrice",
+      "discriminator": [
+        197,
+        106,
+        216,
+        207,
+        155,
+        172,
+        40,
+        245
+      ],
+      "space": 89
     }
   ],
   "types": [
@@ -948,6 +1019,34 @@
       }
     },
     {
+      "name": "AssetPrice",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "price_u",
+            "type": "u64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "StrategyCreated",
       "type": {
         "kind": "struct",
@@ -1138,6 +1237,30 @@
           }
         ]
       }
+    },
+    {
+      "name": "AssetPriceSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "strategy",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "price_u",
+            "type": "u64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          }
+        ]
+      }
     }
   ],
   "errors": [
@@ -1220,6 +1343,46 @@
       "code": 6015,
       "name": "BadProposalState",
       "msg": "Proposal is not in the required state."
+    },
+    {
+      "code": 6016,
+      "name": "BadFaucetAmount",
+      "msg": "Faucet amount must be > 0 and <= 1,000,000 USDC."
+    },
+    {
+      "code": 6017,
+      "name": "BadSubscription",
+      "msg": "Subscription amounts must be positive."
+    },
+    {
+      "code": 6018,
+      "name": "AssetDisabled",
+      "msg": "Asset is disabled for this strategy."
+    },
+    {
+      "code": 6019,
+      "name": "BadExecuteAmount",
+      "msg": "Execute amount (asset quantity to trim) must be positive."
+    },
+    {
+      "code": 6020,
+      "name": "BadPrice",
+      "msg": "Asset price must be positive."
+    },
+    {
+      "code": 6021,
+      "name": "PriceUnavailable",
+      "msg": "No on-chain price is published for this asset."
+    },
+    {
+      "code": 6022,
+      "name": "StalePrice",
+      "msg": "Published asset price is stale."
+    },
+    {
+      "code": 6023,
+      "name": "PriceOutOfBounds",
+      "msg": "Trade quantity does not honor the published price within tolerance."
     }
   ],
   "events": [
@@ -1475,6 +1638,37 @@
         {
           "name": "creator",
           "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "AssetPriceSet",
+      "discriminator": [
+        140,
+        77,
+        97,
+        184,
+        251,
+        213,
+        166,
+        7
+      ],
+      "fields": [
+        {
+          "name": "strategy",
+          "type": "pubkey"
+        },
+        {
+          "name": "mint",
+          "type": "pubkey"
+        },
+        {
+          "name": "price_u",
+          "type": "u64"
+        },
+        {
+          "name": "updated_at",
+          "type": "i64"
         }
       ]
     }
