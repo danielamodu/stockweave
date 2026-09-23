@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { ArrowRight, Check, Coins, Plus, Settings, ShoppingCart, SlidersHorizontal } from "lucide-react";
 import { useDashboard } from "@/components/dashboard/context";
+import { SetupFlow } from "@/components/dashboard/setup";
 import {
   BrowseView,
   Card,
@@ -26,6 +27,23 @@ export default function OverviewPage() {
   const d = useDashboard();
 
   if (!d.following) return <BrowseView baskets={d.baskets} onFollow={d.onFollow} />;
+
+  // Freshly picked basket the wallet hasn't funded yet → guided setup (get test
+  // USDC, then deposit) before the live dashboard. Only when the Devnet mirror is
+  // seeded; otherwise fall through to the read-only overview. While balances are
+  // still loading we hold a skeleton so a funded wallet never flashes the setup.
+  if (d.devnetReady && !d.hasAssetHoldings) {
+    if (d.holdingsBySymbol === null || d.holdingsLoading) {
+      return (
+        <div className="mx-auto max-w-[720px] space-y-4">
+          <Skeleton className="h-10 w-2/3" />
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </div>
+      );
+    }
+    return <SetupFlow />;
+  }
 
   const hasMix = Boolean(d.displayWeights && d.order.length > 0);
   // __OVERVIEW_APPEND__

@@ -60,6 +60,8 @@ export type DashboardValue = {
   movers: PriceSnap[];
   // real holdings — the connected wallet's actual token balances for this basket
   hasHoldings: boolean;
+  // funded = holds ≥1 non-cash asset of this basket (USDC alone doesn't count)
+  hasAssetHoldings: boolean;
   holdingsLoading: boolean;
   holdingsBySymbol: Record<string, number> | null;
   // agent proposal flow
@@ -184,6 +186,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     setApproved(false);
     setDismissed(false);
     setProposal(null);
+    // Drop the previous basket's balances so the setup gate re-reads cleanly for
+    // the new pick (no stale "funded" flash while the new balances load).
+    setTokenAmounts(null);
   }, [followedBasketId]);
   // Read the REAL on-chain strategy for the followed basket: a custom fork reads
   // its own minted account (creator = connected wallet), else the canonical
@@ -430,6 +435,14 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     [holdingsBySymbol],
   );
   const hasHoldings = total > 0;
+  // "Funded" = the wallet actually holds at least one non-cash asset of this
+  // basket. Unlike hasHoldings it ignores USDC, so a wallet that only fauceted
+  // test USDC (no deposit yet) still reads as not-yet-funded and the setup flow
+  // keeps guiding it to deposit before the basket goes live.
+  const hasAssetHoldings = useMemo(
+    () => !!tokenAmounts && order.some((s) => s !== "USDC" && (tokenAmounts[s] ?? 0) > 0),
+    [tokenAmounts, order],
+  );
 
   // --- Devnet mirror buy/faucet (real on-chain, wallet-signed) ---
   const devnetReady = devnetSeeded();
@@ -591,6 +604,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     prices: priceBySym,
     movers,
     hasHoldings,
+    hasAssetHoldings,
     holdingsLoading,
     holdingsBySymbol,
     suggestion,

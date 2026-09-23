@@ -391,6 +391,22 @@ export function BrowseView({ baskets, onFollow }: { baskets: Basket[]; onFollow:
         Each basket is a simple, transparent mix of tokenized pre-IPO stocks with a slice kept in cash.
         An assistant watches it and suggests tune-ups; you approve every one.
       </p>
+
+      <div className="mt-8 bp-mono-label text-[10px]">How it works</div>
+      <ol className="mt-3 grid border border-[var(--color-grid)] sm:grid-cols-3">
+        {[
+          { n: "01", t: "Pick a basket", d: "A transparent mix of tokenized pre-IPO stocks with a slice kept in cash." },
+          { n: "02", t: "Fund & deposit", d: "Grab test USDC on Devnet, then deposit into the mix at live prices — you hold every token." },
+          { n: "03", t: "Approve tune-ups", d: "An assistant proposes rebalances; you sign off on each. It can read and propose, never move funds." },
+        ].map((s, i) => (
+          <li key={s.n} className={cn("p-5", i > 0 && "border-t border-[var(--color-grid)] sm:border-l sm:border-t-0")}>
+            <div className="font-mono text-[11px] tabular-nums text-[var(--color-accent)]">{s.n}</div>
+            <div className="mt-2 text-[14px] font-medium">{s.t}</div>
+            <div className="mt-1.5 text-[12px] leading-relaxed text-[var(--color-muted)]">{s.d}</div>
+          </li>
+        ))}
+      </ol>
+
       {baskets.length === 0 ? (
         <div className="mt-8 grid gap-5 md:grid-cols-2">
           <Skeleton className="h-64 w-full" />
