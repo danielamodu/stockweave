@@ -11,6 +11,7 @@ import { GridPlus } from "@/components/blueprint";
 import { AssetTile } from "@/components/asset-logo";
 import { Skeleton } from "@/components/skeleton";
 import { MainnetAssets } from "@/components/mainnet-assets";
+import { PreStocksLive } from "@/components/prestocks-live";
 import {
   readOfficialStrategy,
   forkOfficialStrategy,
@@ -311,6 +312,8 @@ function StrategyView() {
 
           {/* real tokenized-stock grounding — live mainnet mint facts */}
           <MainnetAssets symbols={weightOrder} />
+          {/* live PreStocks API — mint verification + official mark price / valuation */}
+          <PreStocksLive symbols={weightOrder} />
 
           {/* rules + agent */}
           <section className="mt-6 grid gap-4 lg:grid-cols-2">
