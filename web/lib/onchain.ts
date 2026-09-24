@@ -255,7 +255,7 @@ export async function forkOfficialStrategy(params: {
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
   tx.recentBlockhash = blockhash;
   const signature = await sendTransaction(tx, connection);
-  await confirmSig(connection, signature, blockhash, lastValidBlockHeight);
+  await confirmSig(connection, signature, lastValidBlockHeight);
   return { signature, forkStrategy: fork.toBase58() };
 }
 
@@ -284,31 +284,37 @@ export const DEFAULT_NEW_RULES: NewBasketRules = {
 
 export type NewBasketAsset = { mint: string; targetBps: number; maxBps?: number };
 
-// Confirm a signature robustly. On Devnet the plain block-height strategy often
-// reports "block height exceeded" on a laggy public RPC — or when the wallet
-// approval takes a few seconds — even though the transaction actually landed. On
-// that failure, keep polling the signature status a while longer and accept a tx
-// that did confirm before surfacing the error.
+// Confirm a signature robustly over HTTP only (no WebSocket). web3.js's built-in
+// confirmTransaction relies on a signatureSubscribe WS, which doesn't exist when
+// the client talks to our same-origin `/api/rpc` proxy; and on a laggy public RPC
+// its block-height strategy reports "block height exceeded" even when the tx
+// actually landed (wallet-approval latency eats the blockhash window). Instead we
+// poll getSignatureStatuses until the tx confirms, errors, or its blockhash truly
+// expires — only calling expiry once the status is still absent past the window.
 async function confirmSig(
   connection: Connection,
   signature: string,
-  blockhash: string,
   lastValidBlockHeight: number,
 ): Promise<void> {
-  try {
-    const res = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
-    if (res.value?.err) throw new Error(`Transaction failed on-chain: ${JSON.stringify(res.value.err)}`);
-    return;
-  } catch (err) {
-    for (let i = 0; i < 12; i++) {
-      const st = (await connection.getSignatureStatuses([signature])).value[0];
-      if (st?.err) throw new Error(`Transaction failed on-chain: ${JSON.stringify(st.err)}`);
-      if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return;
-      await new Promise((r) => setTimeout(r, 2500));
+  const startedAt = Date.now();
+  for (;;) {
+    const st = (await connection.getSignatureStatuses([signature])).value[0];
+    if (st?.err) throw new Error(`Transaction failed on-chain: ${JSON.stringify(st.err)}`);
+    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return;
+    if (!st) {
+      let height = 0;
+      try {
+        height = await connection.getBlockHeight("confirmed");
+      } catch {
+        // ignore a transient RPC hiccup; the elapsed-time guard below still bounds us
+      }
+      if (height > lastValidBlockHeight) throw new Error(`Transaction ${signature} expired: block height exceeded.`);
     }
-    throw err;
+    if (Date.now() - startedAt > 90_000) throw new Error(`Transaction ${signature} not confirmed after 90s.`);
+    await new Promise((r) => setTimeout(r, 2000));
   }
 }
+
 
 // Assemble, sign (via the wallet), send, and confirm a set of instructions.
 async function sendIxs(
@@ -322,7 +328,7 @@ async function sendIxs(
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
   tx.recentBlockhash = blockhash;
   const signature = await sendTransaction(tx, connection);
-  await confirmSig(connection, signature, blockhash, lastValidBlockHeight);
+  await confirmSig(connection, signature, lastValidBlockHeight);
   return signature;
 }
 // Create a REAL strategy on-chain in one wallet-signed transaction:

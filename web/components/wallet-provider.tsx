@@ -22,12 +22,18 @@ const BENIGN = new Set([
 ]);
 
 export function SolanaWalletProvider({ children }: { children: React.ReactNode }) {
-  // Prefer a configured Devnet RPC; the public devnet endpoint is heavily
-  // rate-limited and makes wallet-signed txns time out ("block height exceeded").
-  // NEXT_PUBLIC_* is exposed to the browser, so only point this at a Devnet RPC.
+  // Pick the client's RPC. The public devnet endpoint is heavily rate-limited and
+  // makes wallet-signed txns time out ("block height exceeded"), so:
+  //   1. an explicit NEXT_PUBLIC_SOLANA_RPC full URL wins (direct; browser-exposed,
+  //      so Devnet-only) — handy for local dev;
+  //   2. otherwise use the same-origin `/api/rpc` proxy, which forwards to a
+  //      server-only Devnet RPC so no key ships in the client bundle;
+  //   3. server-render / no window → public devnet as a last resort.
   const endpoint = useMemo(() => {
-    const c = (process.env.NEXT_PUBLIC_SOLANA_RPC ?? "").trim();
-    return /^https?:\/\//i.test(c) ? c : clusterApiUrl("devnet");
+    const direct = (process.env.NEXT_PUBLIC_SOLANA_RPC ?? "").trim();
+    if (/^https?:\/\//i.test(direct)) return direct;
+    if (typeof window !== "undefined") return `${window.location.origin}/api/rpc`;
+    return clusterApiUrl("devnet");
   }, []);
 
   const onError = useCallback((error: WalletError) => {
