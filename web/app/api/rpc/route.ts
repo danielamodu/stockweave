@@ -15,17 +15,61 @@ export const dynamic = "force-dynamic";
 
 // Resolve a USABLE upstream Devnet RPC. A non-empty but malformed value (a bare
 // host or leftover junk) must not win and break fetch — sanitize it, tolerate a
-// missing protocol, else fall back to the public endpoint.
-function resolveUpstream(): string {
-  for (const raw of [process.env.SOLANA_RPC, process.env.HELIUS_RPC, process.env.AGENT_RPC, process.env.NEXT_PUBLIC_SOLANA_RPC]) {
+// missing protocol, else fall back to the public endpoint. Also report WHICH env
+// var won so the GET health check can say whether SOLANA_RPC actually took effect.
+function resolveUpstream(): { url: string; source: string } {
+  const candidates: [string, string | undefined][] = [
+    ["SOLANA_RPC", process.env.SOLANA_RPC],
+    ["HELIUS_RPC", process.env.HELIUS_RPC],
+    ["AGENT_RPC", process.env.AGENT_RPC],
+    ["NEXT_PUBLIC_SOLANA_RPC", process.env.NEXT_PUBLIC_SOLANA_RPC],
+  ];
+  for (const [name, raw] of candidates) {
     const c = (raw ?? "").trim();
     if (!c) continue;
-    if (/^https?:\/\//i.test(c)) return c;
-    if (/^[\w.-]+\.[a-z]{2,}(?::\d+)?(?:[/?].*)?$/i.test(c)) return `https://${c}`;
+    if (/^https?:\/\//i.test(c)) return { url: c, source: name };
+    if (/^[\w.-]+\.[a-z]{2,}(?::\d+)?(?:[/?].*)?$/i.test(c)) return { url: `https://${c}`, source: `${name} (added https)` };
   }
-  return clusterApiUrl("devnet");
+  return { url: clusterApiUrl("devnet"), source: "FALLBACK: public devnet (no SOLANA_RPC set)" };
 }
-const UPSTREAM = resolveUpstream();
+const { url: UPSTREAM, source: UPSTREAM_SOURCE } = resolveUpstream();
+
+// Diagnostic: GET /api/rpc reports which RPC the proxy resolved (HOST ONLY — never
+// the key) and whether that RPC is healthy from the server's runtime. Lets us tell
+// "SOLANA_RPC never took effect" apart from "the RPC itself is unhealthy" without
+// guessing. Safe to remove after the demo.
+export async function GET() {
+  let host = "unknown";
+  try {
+    host = new URL(UPSTREAM).host;
+  } catch {
+    /* leave "unknown" */
+  }
+  const started = Date.now();
+  let health: unknown = null;
+  let blockHeight: unknown = null;
+  let ok = false;
+  let err: string | null = null;
+  try {
+    const res = await fetch(UPSTREAM, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify([
+        { jsonrpc: "2.0", id: 1, method: "getHealth" },
+        { jsonrpc: "2.0", id: 2, method: "getBlockHeight", params: [{ commitment: "confirmed" }] },
+      ]),
+      cache: "no-store",
+    });
+    const j: any = await res.json();
+    const arr = Array.isArray(j) ? j : [j];
+    health = arr.find((x) => x?.id === 1)?.result ?? arr.find((x) => x?.id === 1)?.error ?? null;
+    blockHeight = arr.find((x) => x?.id === 2)?.result ?? null;
+    ok = res.ok && health === "ok" && typeof blockHeight === "number";
+  } catch (e: any) {
+    err = e?.message ?? String(e);
+  }
+  return NextResponse.json({ ok, upstreamHost: host, source: UPSTREAM_SOURCE, health, blockHeight, ms: Date.now() - started, err });
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.text(); // forward the JSON-RPC payload verbatim (single or batch)
