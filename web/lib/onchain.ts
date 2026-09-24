@@ -275,7 +275,7 @@ export type NewBasketRules = {
 // Mirrors the seed guardrails: 10% reserve, 5% drift, 35% single-asset cap.
 export const DEFAULT_NEW_RULES: NewBasketRules = {
   reserveWeightBps: 1000,
-  rebalanceDriftBps: 500,
+  rebalanceDriftBps: 100,
   maxSingleAssetWeightBps: 3500,
   maxTradeNotional: 50,
   maxDailyNotional: 200,
