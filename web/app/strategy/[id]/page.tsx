@@ -12,6 +12,9 @@ import { AssetTile } from "@/components/asset-logo";
 import { Skeleton } from "@/components/skeleton";
 import { MainnetAssets } from "@/components/mainnet-assets";
 import { PreStocksLive } from "@/components/prestocks-live";
+import { DriftBar } from "@/components/dashboard/ui";
+import { segTone } from "@/lib/present";
+import { MarketStatus } from "@/components/market-status";
 import {
   readOfficialStrategy,
   forkOfficialStrategy,
@@ -228,7 +231,10 @@ function StrategyView() {
           >
             <ArrowLeft size={15} /> Stockweave
           </Link>
-          <span className="bp-mono-label text-[10px]">Strategy · {basketName}</span>
+          <div className="flex items-center gap-4">
+            <MarketStatus />
+            <span className="bp-mono-label text-[10px]">Strategy · {basketName}</span>
+          </div>
         </div>
 
         <div className="px-4 py-8 sm:px-8 lg:px-10">
@@ -277,7 +283,7 @@ function StrategyView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {weightOrder.map((sym) => {
+                  {weightOrder.map((sym, idx) => {
                     const meta = metaFor(sym);
                     const target = v ? (v.targetWeights[sym] ?? 0) / 100 : null;
                     const current = v ? (v.currentWeights[sym] ?? 0) / 100 : null;
@@ -295,18 +301,27 @@ function StrategyView() {
                           {current === null ? "—" : current + "%"}
                         </td>
                         <td className="hidden px-4 py-3 sm:table-cell">
-                          <span className="block h-1.5 w-full max-w-[140px] bg-black/10">
-                            <span
-                              className="block h-full bg-[var(--color-accent)] transition-all"
-                              style={{ width: (current ?? 0) + "%" }}
+                          <div className="max-w-[150px]">
+                            <DriftBar
+                              current={current ?? 0}
+                              target={target ?? 0}
+                              tone={segTone(sym, idx)}
+                              cash={sym === "USDC"}
                             />
-                          </span>
+                          </div>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
+            </div>
+            <div className="mt-2.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-faint)]">
+              <span className="relative inline-block h-3 w-6 bg-black/[0.07]">
+                <span className="absolute inset-y-0 left-0 w-2/3 bg-[var(--color-accent)]" />
+                <span className="absolute -top-0.5 -bottom-0.5 w-px bg-[var(--color-ink)]" style={{ left: "60%" }} />
+              </span>
+              Fill = current weight · tick = on-chain target
             </div>
           </section>
 

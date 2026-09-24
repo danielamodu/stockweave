@@ -3,6 +3,7 @@
 // Overview — the big picture: what your mix is worth, how it's split, and the
 // one thing (if any) waiting on your OK. Detail lives on the Holdings and
 // Assistant pages; this page links out to them.
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Banknote, Check, Coins, Plus, Settings, ShoppingCart, SlidersHorizontal } from "lucide-react";
 import { useDashboard } from "@/components/dashboard/context";
@@ -26,6 +27,9 @@ import { cn } from "@/lib/utils";
 
 export default function OverviewPage() {
   const d = useDashboard();
+  // Which allocation slice is hovered — shared by the donut and its legend list
+  // so hovering either cross-highlights the other.
+  const [activeSeg, setActiveSeg] = useState<string | null>(null);
 
   if (!d.following) return <BrowseView baskets={d.baskets} onFollow={d.onFollow} />;
 
@@ -105,8 +109,8 @@ export default function OverviewPage() {
             {hasMix ? (
               <div className="flex flex-col items-center gap-6 sm:flex-row sm:gap-8">
                 <div className="relative grid shrink-0 place-items-center" style={{ width: 132, height: 132 }}>
-                  <Donut segments={d.donutSegs} size={132} stroke={14} />
-                  <div className="absolute inset-0 grid place-items-center text-center">
+                  <Donut segments={d.donutSegs} size={132} stroke={14} activeKey={activeSeg} onHover={setActiveSeg} />
+                  <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
                     <div>
                       <div className="font-mono text-[1.5rem] leading-none tabular-nums">
                         {d.holdingCount}
@@ -117,16 +121,28 @@ export default function OverviewPage() {
                   </div>
                 </div>
                 <ul className="w-full flex-1 space-y-2.5">
-                  {d.order.map((s, i) => (
-                    <li key={s} className="flex items-center gap-3 text-[13px]">
-                      <span
-                        className={cn("inline-block h-2.5 w-2.5 shrink-0", s === "USDC" && "bp-hatch border border-[var(--color-grid)]")}
-                        style={s === "USDC" ? undefined : { background: segTone(s, i) }}
-                      />
-                      <span className="flex-1 font-medium">{ASSET_LABEL[s] ?? s}</span>
-                      <span className="font-mono tabular-nums text-[var(--color-muted)]">{pct(d.displayWeights![s] ?? 0)}%</span>
-                    </li>
-                  ))}
+                  {d.order.map((s, i) => {
+                    const on = activeSeg === s;
+                    const dim = activeSeg != null && !on;
+                    return (
+                      <li
+                        key={s}
+                        onMouseEnter={() => setActiveSeg(s)}
+                        onMouseLeave={() => setActiveSeg(null)}
+                        className={cn(
+                          "flex cursor-default items-center gap-3 text-[13px] transition-opacity duration-150",
+                          dim && "opacity-40",
+                        )}
+                      >
+                        <span
+                          className={cn("inline-block h-2.5 w-2.5 shrink-0", s === "USDC" && "bp-hatch border border-[var(--color-grid)]")}
+                          style={s === "USDC" ? undefined : { background: segTone(s, i) }}
+                        />
+                        <span className={cn("flex-1 font-medium", on && "text-[var(--color-accent)]")}>{ASSET_LABEL[s] ?? s}</span>
+                        <span className="font-mono tabular-nums text-[var(--color-muted)]">{pct(d.displayWeights![s] ?? 0)}%</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : (

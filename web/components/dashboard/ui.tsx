@@ -103,16 +103,27 @@ export function ChangeBadge({ value, className, size = 11 }: { value?: number | 
 
 // Allocation ring. Segments are drawn clockwise from 12 o'clock; the track
 // behind them is a hairline circle so cash (drawn muted) still reads as "held".
+// Opt-in interactivity: pass `onHover` and the ring lights up — the hovered
+// segment lifts (a touch thicker) while its siblings recede, and `activeKey`
+// lets a sibling list cross-highlight the same segment. Static callers omit
+// both and get the plain ring, unchanged.
 export function Donut({
   segments,
   size = 132,
   stroke = 13,
+  activeKey,
+  onHover,
 }: {
   segments: { key: string; pct: number; color: string }[];
   size?: number;
   stroke?: number;
+  activeKey?: string | null;
+  onHover?: (key: string | null) => void;
 }) {
-  const r = (size - stroke) / 2;
+  const interactive = Boolean(onHover);
+  // Reserve a little headroom so a lifted (thicker) arc never clips the viewBox.
+  const lift = interactive ? 3 : 0;
+  const r = (size - stroke - lift * 2) / 2;
   const c = 2 * Math.PI * r;
   let acc = 0;
   return (
@@ -120,6 +131,8 @@ export function Donut({
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-grid)" strokeWidth={stroke} />
       {segments.map((s) => {
         const len = (Math.max(s.pct, 0) / 100) * c;
+        const active = activeKey === s.key;
+        const dimmed = activeKey != null && !active;
         const node = (
           <circle
             key={s.key}
@@ -128,9 +141,12 @@ export function Donut({
             r={r}
             fill="none"
             stroke={s.color}
-            strokeWidth={stroke}
+            strokeWidth={active ? stroke + lift : stroke}
             strokeDasharray={`${len} ${c - len}`}
             strokeDashoffset={-acc}
+            className={cn(interactive && "transition-all duration-150", dimmed && "opacity-25")}
+            onMouseEnter={interactive ? () => onHover!(s.key) : undefined}
+            onMouseLeave={interactive ? () => onHover!(null) : undefined}
           />
         );
         acc += len;
@@ -318,6 +334,44 @@ export function basketMix(b: Basket) {
   for (const c of b.constituents) weights[c.symbol] = c.targetBps;
   return { order, weights };
 }
+
+// Weight bar with a target tick. `current`/`target` are whole percents. The fill
+// is the live weight; a hairline tick marks the target, so drift — fill running
+// past or short of the tick — reads at a glance. This is the "what moved" signal,
+// drawn in the same blueprint vocabulary as everything else (no new colour).
+export function DriftBar({
+  current,
+  target,
+  tone = "var(--color-accent)",
+  cash = false,
+  animate = true,
+  className,
+}: {
+  current: number;
+  target: number;
+  tone?: string;
+  cash?: boolean;
+  animate?: boolean;
+  className?: string;
+}) {
+  const cur = Math.max(0, Math.min(100, current));
+  const tgt = Math.max(0, Math.min(100, target));
+  return (
+    <span className={cn("relative block h-2 w-full bg-black/[0.07]", className)}>
+      <span
+        className={cn("absolute inset-y-0 left-0 block", animate && "bp-grow", cash && "bp-hatch border-r border-[var(--color-grid)]")}
+        style={{ width: cur + "%", background: cash ? undefined : tone }}
+      />
+      {/* target tick — a hairline that overshoots the bar top & bottom */}
+      <span
+        aria-hidden
+        title={`target ${tgt}%`}
+        className="absolute -top-1 -bottom-1 w-px bg-[var(--color-ink)]"
+        style={{ left: `calc(${tgt}% - 0.5px)` }}
+      />
+    </span>
+  );
+}
 // __UI_APPEND3__
 
 // One holdings row: logo · price · 24h · position value · weight bar.
@@ -343,6 +397,11 @@ export function HoldingRow({
   // Real position value when the wallet's holdings are known; otherwise fall
   // back to the target-weight slice of the total.
   const value = valueProp ?? total * (weightPct / 100);
+  // Weight bar shows drift: the fill is your CURRENT weight (your holdings' share
+  // of the mix), the tick is the target you follow. With no holdings the two
+  // coincide, so it reads as on-plan rather than inventing drift.
+  const target = weightPct;
+  const current = total > 0 && valueProp != null ? (value / total) * 100 : target;
   return (
     <li className="bp-row flex items-center gap-3 border-b border-[var(--color-grid)] px-2 py-3 last:border-b-0 sm:px-3">
       <AssetTile symbol={sym} size={36} glyph={16} className={isCash ? "bp-hatch" : undefined} />
@@ -373,14 +432,9 @@ export function HoldingRow({
       <div className="hidden w-[130px] sm:block">
         <div className="flex items-baseline justify-between font-mono text-[11px]">
           <span className="text-[var(--color-faint)]">wt</span>
-          <span className="tabular-nums">{weightPct}%</span>
+          <span className="tabular-nums">{Number.isInteger(current) ? current : current.toFixed(1)}%</span>
         </div>
-        <span className="mt-1.5 block h-1.5 w-full bg-black/[0.07]">
-          <span
-            className={cn("bp-grow block h-full", isCash && "bp-hatch border-r border-[var(--color-grid)]")}
-            style={{ width: weightPct + "%", background: isCash ? undefined : segTone(sym, i), animationDelay: i * 60 + "ms" }}
-          />
-        </span>
+        <DriftBar current={current} target={target} tone={segTone(sym, i)} cash={isCash} className="mt-1.5 h-1.5" />
       </div>
     </li>
   );
@@ -426,6 +480,14 @@ export function Holdings({
           />
         ))}
       </ul>
+      {/* Legend — makes the fill/tick reading explicit, matching the strategy page. */}
+      <div className="mt-3 hidden items-center gap-2 border-t border-[var(--color-grid)] pt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-faint)] sm:flex">
+        <span className="relative inline-block h-2 w-8 bg-black/[0.07]">
+          <span className="absolute inset-y-0 left-0 w-1/2 bg-[var(--color-accent)]" />
+          <span className="absolute -top-1 -bottom-1 left-2/3 w-px bg-[var(--color-ink)]" />
+        </span>
+        Fill = your weight · tick = target
+      </div>
     </div>
   );
 }

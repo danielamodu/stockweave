@@ -10,6 +10,7 @@ import { LayoutGrid, Layers, Copy, SlidersHorizontal, Bot, Menu, X } from "lucid
 import { DashboardProvider, useDashboard } from "@/components/dashboard/context";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
+import { MarketStatus } from "@/components/market-status";
 
 // Left-rail item — blue when active, with a short accent tick on the left.
 function NavItem({
@@ -185,6 +186,7 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
         <span className="text-[var(--color-ink)]">{crumb}</span>
       </div>
       <div className="flex items-center gap-3">
+        <MarketStatus />
         {isLive && following && (
           <span className="hidden items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--color-muted)] sm:inline-flex">
             <span className="bp-pulse h-1.5 w-1.5 rounded-full bg-[var(--color-up)]" /> Live

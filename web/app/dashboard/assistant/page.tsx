@@ -7,7 +7,7 @@ import { useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Check, X, ExternalLink } from "lucide-react";
 import { useDashboard, type AgentProposal } from "@/components/dashboard/context";
-import { Card, Label } from "@/components/dashboard/ui";
+import { Card, Label, DriftBar } from "@/components/dashboard/ui";
 import { EXPLORER, EXPLORER_TX, type OnchainRules } from "@/lib/onchain";
 import { ASSET_LABEL } from "@/lib/present";
 import { cn } from "@/lib/utils";
@@ -64,24 +64,45 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 // the signed proposal or the strategy's on-chain rules; nothing is invented.
 function ProposalBreakdown({ p, rules }: { p: AgentProposal; rules?: OnchainRules | null }) {
   const name = ASSET_LABEL[p.symbol] ?? p.symbol;
+  const targetPct = p.newTargetWeightBps / 100;
+  const nowPct = Math.min(100, targetPct + p.maxDriftBps / 100);
   return (
-    <dl className="mt-4 border-t border-[var(--color-grid)]">
-      <Fact label="Drifted">
-        {name} · +{(p.maxDriftBps / 100).toFixed(1)} pts over its {bpsPct(p.newTargetWeightBps)} target
-        <div className="text-[11px] text-[var(--color-muted)]">modelled on the last 24h of live prices</div>
-      </Fact>
-      <Fact label="Proposed">
-        Sell <span className="font-mono tabular-nums">${p.notional}</span> of {name} into cash (USDC reserve)
-      </Fact>
-      <Fact label="Within limits">
-        ≤ ${rules?.maxTradeNotional ?? "—"} per trade · cash floor {bpsPct(rules?.reserveWeightBps)} · single asset ≤{" "}
-        {bpsPct(rules?.maxSingleAssetWeightBps)} · oracle &lt; {rules?.maxPriceAgeSeconds ?? "—"}s
-      </Fact>
-      <Fact label="Approval">
-        <span className="text-[var(--color-accent)]">Agent proposed — it cannot execute</span>
-        <div className="text-[11px] text-[var(--color-muted)]">only your signature moves funds</div>
-      </Fact>
-    </dl>
+    <>
+      {/* Drift, drawn. The fill is the asset's live weight; the tick is its
+          on-chain target. The gap past the tick is exactly what the agent
+          proposes to trim — the whole proposal, legible in one bar. */}
+      <div className="mt-4 border border-[var(--color-grid)] p-4">
+        <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-faint)]">
+          <span>{name} weight</span>
+          <span className="tabular-nums">
+            now <span className="text-[var(--color-down)]">{nowPct.toFixed(1)}%</span> · target{" "}
+            <span className="text-[var(--color-ink)]">{targetPct.toFixed(0)}%</span>
+          </span>
+        </div>
+        <DriftBar current={nowPct} target={targetPct} className="mt-2.5 h-2.5" />
+        <div className="mt-2.5 flex items-center gap-1.5 font-mono text-[11px] text-[var(--color-muted)]">
+          <span className="inline-block h-3 w-px translate-y-[2px] bg-[var(--color-ink)]" />
+          past the tick is the drift — the agent proposes trimming it back to target
+        </div>
+      </div>
+      <dl className="mt-4 border-t border-[var(--color-grid)]">
+        <Fact label="Drifted">
+          {name} · +{(p.maxDriftBps / 100).toFixed(1)} pts over its {bpsPct(p.newTargetWeightBps)} target
+          <div className="text-[11px] text-[var(--color-muted)]">modelled on the last 24h of live prices</div>
+        </Fact>
+        <Fact label="Proposed">
+          Sell <span className="font-mono tabular-nums">${p.notional}</span> of {name} into cash (USDC reserve)
+        </Fact>
+        <Fact label="Within limits">
+          ≤ ${rules?.maxTradeNotional ?? "—"} per trade · cash floor {bpsPct(rules?.reserveWeightBps)} · single asset ≤{" "}
+          {bpsPct(rules?.maxSingleAssetWeightBps)} · oracle &lt; {rules?.maxPriceAgeSeconds ?? "—"}s
+        </Fact>
+        <Fact label="Approval">
+          <span className="text-[var(--color-accent)]">Agent proposed — it cannot execute</span>
+          <div className="text-[11px] text-[var(--color-muted)]">only your signature moves funds</div>
+        </Fact>
+      </dl>
+    </>
   );
 }
 
