@@ -71,7 +71,20 @@ async function fetchReferenceOracle(): Promise<{ price: bigint; publishTime: num
   return { price: BigInt(p.price), publishTime: Number(p.publish_time) };
 }
 
+// Thin wrapper so ANY uncaught throw (RPC read failure, oracle fetch, etc.)
+// surfaces as a structured JSON error instead of an opaque empty-body 500.
 export async function POST(req: NextRequest) {
+  try {
+    return await handle(req);
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: "INTERNAL_ERROR", message: e?.message ?? String(e), where: e?.stack?.split("\n")?.[1]?.trim() },
+      { status: 500 },
+    );
+  }
+}
+
+async function handle(req: NextRequest) {
   const agent = loadAgentKeypair();
   if (!agent) {
     return NextResponse.json(
