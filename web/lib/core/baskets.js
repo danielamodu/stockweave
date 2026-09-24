@@ -13,7 +13,7 @@ const BASKETS = [
     name: "AI Infrastructure",
     theme: "Frontier AI: model labs and robotics",
     description:
-      "The leading AI model labs plus embodied-AI robotics, capped and cash-buffered — exposure to the AI build-out across software and hardware.",
+      "The companies building modern AI — the leading model labs plus embodied-AI robotics — held at equal weight with a 10% cash buffer, and flagged for a tune-up whenever one position runs ahead.",
     constituents: [
       { symbol: "OPENAI", targetBps: 3000, holdingsUnits: 3 },
       { symbol: "ANTHROPIC", targetBps: 3000, holdingsUnits: 6 },
@@ -26,7 +26,7 @@ const BASKETS = [
     name: "Space & Deep-Tech",
     theme: "Hard tech: space, defense, neurotech",
     description:
-      "The physical-world frontier — launch, autonomous defense, and brain-computer interfaces — with a larger cash buffer for a higher-variance mix.",
+      "The hard-tech frontier — orbital launch, autonomous defense, and neural interfaces — led by SpaceX and held with a 20% cash buffer for a higher-variance mix.",
     constituents: [
       { symbol: "SPACEX", targetBps: 3500, holdingsUnits: 7 },
       { symbol: "ANDURIL", targetBps: 2500, holdingsUnits: 10 },

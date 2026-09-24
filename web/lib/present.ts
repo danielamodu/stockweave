@@ -59,18 +59,28 @@ export function pct(bps: number): number {
   return Math.round(bps) / 100;
 }
 
-// Turn an agent decision into a single plain sentence + a short action verb,
-// or null when there's nothing for the user to do.
+// Turn an agent decision into a plain, honest sentence, or null when there's
+// nothing for the user to do. Uses the real numbers the engine produced — the
+// asset's current vs target weight and the proposed trim — never invented.
 export function plainSuggestion(decision: {
   action?: string;
-  trades?: { symbol: string; notionalUsd: number }[];
+  trades?: {
+    symbol: string;
+    notionalUsd: number;
+    fromWeightBps?: number;
+    targetWeightBps?: number;
+  }[];
 }): { text: string } | null {
   if (!decision || decision.action !== "PROPOSE_REBALANCE" || !decision.trades?.length) {
     return null;
   }
   const t = decision.trades[0];
   const name = ASSET_LABEL[t.symbol] ?? t.symbol;
+  const lead =
+    t.fromWeightBps != null && t.targetWeightBps != null
+      ? `${name} has grown to ${pct(t.fromWeightBps)}% of the mix, above its ${pct(t.targetWeightBps)}% target.`
+      : `${name} grew past its target.`;
   return {
-    text: `${name} grew past its target. Move $${t.notionalUsd} into cash to bring the mix back in line.`,
+    text: `${lead} The agent suggests moving $${t.notionalUsd} into cash to bring the mix back in line — it can only suggest, so you approve every change.`,
   };
 }

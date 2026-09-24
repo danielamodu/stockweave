@@ -3,12 +3,13 @@
 // Assistant — the constrained agent. It can READ the strategy and PROPOSE a
 // tune-up, but it can never move funds: every change waits for your approval.
 // This page makes those limits explicit and surfaces the current proposal.
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Check, X, ExternalLink } from "lucide-react";
-import { useDashboard } from "@/components/dashboard/context";
+import { useDashboard, type AgentProposal } from "@/components/dashboard/context";
 import { Card, Label } from "@/components/dashboard/ui";
-import { EXPLORER, EXPLORER_TX } from "@/lib/onchain";
+import { EXPLORER, EXPLORER_TX, type OnchainRules } from "@/lib/onchain";
+import { ASSET_LABEL } from "@/lib/present";
 import { cn } from "@/lib/utils";
 
 const READ = 0b001;
@@ -37,6 +38,50 @@ function Perm({ ok, label, note }: { ok: boolean; label: string; note: string })
         <div className="mt-0.5 text-[12px] text-[var(--color-muted)]">{note}</div>
       </div>
     </li>
+  );
+}
+
+// bps → whole-percent string (e.g. 3000 → "30%"), or an em dash if unknown.
+function bpsPct(bps?: number): string {
+  return bps == null ? "—" : `${Math.round(bps / 100)}%`;
+}
+
+// One labelled fact in the proposal breakdown.
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-[var(--color-grid)] py-2.5 last:border-b-0">
+      <dt className="mt-0.5 shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-faint)]">
+        {label}
+      </dt>
+      <dd className="text-right text-[13px] leading-snug">{children}</dd>
+    </div>
+  );
+}
+
+// The plain-numbers story behind a real on-chain proposal: what drifted, the
+// proposed trim, the on-chain guardrails it stays inside, and the hard line —
+// the agent can propose but never execute. Every figure is a real value from
+// the signed proposal or the strategy's on-chain rules; nothing is invented.
+function ProposalBreakdown({ p, rules }: { p: AgentProposal; rules?: OnchainRules | null }) {
+  const name = ASSET_LABEL[p.symbol] ?? p.symbol;
+  return (
+    <dl className="mt-4 border-t border-[var(--color-grid)]">
+      <Fact label="Drifted">
+        {name} · +{(p.maxDriftBps / 100).toFixed(1)} pts over its {bpsPct(p.newTargetWeightBps)} target
+        <div className="text-[11px] text-[var(--color-muted)]">modelled on the last 24h of live prices</div>
+      </Fact>
+      <Fact label="Proposed">
+        Sell <span className="font-mono tabular-nums">${p.notional}</span> of {name} into cash (USDC reserve)
+      </Fact>
+      <Fact label="Within limits">
+        ≤ ${rules?.maxTradeNotional ?? "—"} per trade · cash floor {bpsPct(rules?.reserveWeightBps)} · single asset ≤{" "}
+        {bpsPct(rules?.maxSingleAssetWeightBps)} · oracle &lt; {rules?.maxPriceAgeSeconds ?? "—"}s
+      </Fact>
+      <Fact label="Approval">
+        <span className="text-[var(--color-accent)]">Agent proposed — it cannot execute</span>
+        <div className="text-[11px] text-[var(--color-muted)]">only your signature moves funds</div>
+      </Fact>
+    </dl>
   );
 }
 
@@ -95,6 +140,7 @@ export default function AssistantPage() {
                   >
                     proposed on-chain by the agent <ExternalLink size={11} />
                   </a>
+                  <ProposalBreakdown p={d.proposal} rules={oc?.rules} />
                   <div className="mt-5 flex gap-2.5">
                     <button onClick={d.onApprove} disabled={d.approving} className={cn(APPROVE_CLS, d.approving && "cursor-not-allowed opacity-70")}>
                       {d.approving ? "Approving on-chain…" : "Approve + execute"}

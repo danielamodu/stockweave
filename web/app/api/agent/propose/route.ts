@@ -231,7 +231,8 @@ export async function POST(req: NextRequest) {
   }
 
   const label = ASSET_LABEL[pick.symbol] ?? pick.symbol;
-  const text = `${label} has drifted about ${(pickDrift / 100).toFixed(1)}% above target over the last 24h. Trim roughly $${notional} back into cash to bring the mix in line.`;
+  const targetPct = (pick.targetBps / 100).toFixed(0);
+  const text = `${label} has drifted about ${(pickDrift / 100).toFixed(1)}% above its ${targetPct}% target over the last 24h of live prices. The agent proposes trimming $${notional} back into cash — it can't execute, so this waits for your approval.`;
   return NextResponse.json({
     ok: true,
     signature,

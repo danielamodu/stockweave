@@ -108,6 +108,8 @@ export type AgentProposal = {
   mint: string;
   symbol: string;
   newTargetWeightBps: number;
+  projectedReserveBps: number;
+  maxDriftBps: number;
   notional: number;
   text: string;
   signature: string;
@@ -371,6 +373,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         mint: d.mint,
         symbol: d.symbol,
         newTargetWeightBps: d.newTargetWeightBps,
+        projectedReserveBps: d.projectedReserveBps,
+        maxDriftBps: d.maxDriftBps,
         notional: d.notional,
         text: d.text,
         signature: d.signature,
