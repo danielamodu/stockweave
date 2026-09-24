@@ -1,0 +1,44 @@
+{
+  "stage": "e2e-fork-agent-loop",
+  "programId": "EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN",
+  "forkCreator": "3HdxZSiW4TubTEsGKLogJdkFAqKvV4NiS5gcQhiPMHNH",
+  "agent": "2kjSaKf6GNfg6pGM81zVrvmGdFpTf6WMPhuJ7TbuE5Sc",
+  "basket": "ai-infrastructure",
+  "symbol": "OPENAI",
+  "assetMint": "FtoSc6EV1LeWFsJarfBp6cSqyBFo2AyPwoubQeMka5kk",
+  "usdcMint": "5aR44pbP49XyNvkeH2qpnB6jCcGm6cFeXQgpXDvVXMos",
+  "strategy": "DwpeBbGBcssRPmBLHpLR2RQtAZPd8DBbksnZuSmv62mH",
+  "proposal": "F2mJpY7vWJcoSk1cPLwT2Tits2b89Kxabb55PcHtuCbd",
+  "proposalId": "1790251568536",
+  "treasuryUsdc": "fqCQA6sVSA9RBAkG72KV6XdvJjgYuJfhYs3JoZF8b7j",
+  "priceU": 1349851619,
+  "priceUsd": 1349.851619,
+  "notional": 5,
+  "assetBurned": 0.00370411,
+  "negativeAgentApprove": {
+    "rejected": true,
+    "err": "Simulation failed. "
+  },
+  "setupTx": "5JBt53nCBVi2XKWmggpAwkrVRTKRmiyeHPxHQNsRvXPnuTZdRdS5dG7oKNmbhHBSvec3id55ZmLASdmtmeacPfrW",
+  "proposeTx": "32gauvFkjiqTFAV8QedeNWXfojvBKh5gbSpNsMGWCxaNNBWPNZNd3HVafM6sB2acR5AYLQcmxvfm7cbAL2oEFQZG",
+  "approveTx": "KcJ9UBvE3Bb5G8AuzVRsgiPoPJjCyRWA4votGFBxHjUYD6RNBq9uurxt6ZKLruSuSV45Hwvw1NUeVmERswL9WKt",
+  "executeTx": "jgJgF94ZRdoqkTr2VjGo9xFzUEZhdBcnc9V21PaPFAifHEYMe7vFCBVZC93v5UzBbr7mijnQLeMBGutY2V73cAT",
+  "proposalStatus": 2,
+  "balances": {
+    "midAsset": 0.01481644,
+    "afterAsset": 0.01111233,
+    "midUsdc": 20,
+    "afterUsdc": 25,
+    "midTreasury": 609.999995,
+    "afterTreasury": 604.999995
+  },
+  "checks": {
+    "okBurn": true,
+    "okUsdc": true,
+    "okTreasury": true,
+    "okStatus": true,
+    "agentApproveRejected": true
+  },
+  "pass": true,
+  "ts": "2026-09-24T12:06:19.011Z"
+}
