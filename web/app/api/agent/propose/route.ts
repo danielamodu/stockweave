@@ -39,7 +39,7 @@ const { fetchLivePricesBySymbol } = livePrices as any;
 const ASSET_LABEL: Record<string, string> = {
   OPENAI: "OpenAI",
   ANTHROPIC: "Anthropic",
-  XAI: "xAI",
+  FIGUREAI: "Figure AI",
   SPACEX: "SpaceX",
   ANDURIL: "Anduril",
   NEURALINK: "Neuralink",

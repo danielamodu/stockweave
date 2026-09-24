@@ -24,9 +24,9 @@ function check(name, fn) {
 }
 
 const NOW = 1_700_000_000_000;
-const TARGET = { OPENAI: 3000, ANTHROPIC: 3000, XAI: 3000, USDC: 1000 };
+const TARGET = { OPENAI: 3000, ANTHROPIC: 3000, FIGUREAI: 3000, USDC: 1000 };
 function freshTokens() {
-  return ["OPENAI", "ANTHROPIC", "XAI", "USDC"].map((s) => ({ symbol: s, validity: "FRESH" }));
+  return ["OPENAI", "ANTHROPIC", "FIGUREAI", "USDC"].map((s) => ({ symbol: s, validity: "FRESH" }));
 }
 const unknownRef = { validity: "UNKNOWN" };
 
@@ -65,9 +65,9 @@ check("No LLM call is required to calculate a state", () => {
 });
 
 check("Fixture prices land exactly on target weights (NORMAL)", () => {
-  const nav = rules.calculateMarkNAV({ OPENAI: 100, ANTHROPIC: 50, XAI: 25, USDC: 1 }, rules.HOLDINGS_UNITS);
+  const nav = rules.calculateMarkNAV({ OPENAI: 100, ANTHROPIC: 50, FIGUREAI: 25, USDC: 1 }, rules.HOLDINGS_UNITS);
   assert.strictEqual(nav, 1000);
-  const weights = rules.calculateCurrentWeights({ OPENAI: 300, ANTHROPIC: 300, XAI: 300, USDC: 100 }, 1000);
+  const weights = rules.calculateCurrentWeights({ OPENAI: 300, ANTHROPIC: 300, FIGUREAI: 300, USDC: 100 }, 1000);
   assert.deepStrictEqual(weights, TARGET);
   const drift = rules.calculateWeightDrift(weights, TARGET);
   assert.strictEqual(drift.maxDriftBps, 0);
@@ -116,14 +116,14 @@ check("Stale Pyth snapshot blocks proposal eligibility", () => {
 
 check("Maximum-weight and reserve breaches detected with reason codes", () => {
   const over = rules.classifyStrategyState({
-    currentWeightsBps: { OPENAI: 4120, ANTHROPIC: 2380, XAI: 2500, USDC: 1000 },
+    currentWeightsBps: { OPENAI: 4120, ANTHROPIC: 2380, FIGUREAI: 2500, USDC: 1000 },
     targetWeightsBps: TARGET, tokenPrices: freshTokens(), reference: unknownRef,
     markNAV: 1000, referenceNAV: null,
   });
   assert.strictEqual(over.state, "DRIFTED");
   assert.ok(over.reasonCodes.includes("ASSET_OVERWEIGHT"));
   const thin = rules.classifyStrategyState({
-    currentWeightsBps: { OPENAI: 3000, ANTHROPIC: 3000, XAI: 3100, USDC: 900 },
+    currentWeightsBps: { OPENAI: 3000, ANTHROPIC: 3000, FIGUREAI: 3100, USDC: 900 },
     targetWeightsBps: TARGET, tokenPrices: freshTokens(), reference: unknownRef,
     markNAV: 1000, referenceNAV: null,
   });
@@ -147,7 +147,7 @@ check("Notional limits: $42 and $50 pass, $50.01 and daily overflow fail", () =>
 
 check("State transitions: DRIFTED, PAUSED, DISLOCATED, UNKNOWN reference", () => {
   const drifted = rules.classifyStrategyState({
-    currentWeightsBps: { OPENAI: 3600, ANTHROPIC: 2700, XAI: 2700, USDC: 1000 },
+    currentWeightsBps: { OPENAI: 3600, ANTHROPIC: 2700, FIGUREAI: 2700, USDC: 1000 },
     targetWeightsBps: TARGET, tokenPrices: freshTokens(), reference: unknownRef,
     markNAV: 1000, referenceNAV: null,
   });

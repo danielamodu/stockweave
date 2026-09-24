@@ -5,7 +5,7 @@
 export const ASSET_LABEL: Record<string, string> = {
   OPENAI: "OpenAI",
   ANTHROPIC: "Anthropic",
-  XAI: "xAI",
+  FIGUREAI: "Figure AI",
   SPACEX: "SpaceX",
   ANDURIL: "Anduril",
   NEURALINK: "Neuralink",
@@ -17,7 +17,7 @@ export const ASSET_LABEL: Record<string, string> = {
 export const SEG_TONE: Record<string, string> = {
   OPENAI: "var(--color-accent)",
   ANTHROPIC: "#4d4dff",
-  XAI: "#8f8fff",
+  FIGUREAI: "#8f8fff",
   SPACEX: "var(--color-accent)",
   ANDURIL: "#4d4dff",
   NEURALINK: "#8f8fff",

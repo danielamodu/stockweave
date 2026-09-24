@@ -51,7 +51,7 @@ type Strategy = {
 const ASSET_META: Record<string, { name: string; issuer: string; chip: string }> = {
   OPENAI: { name: "OpenAI", issuer: "PreStocks", chip: "OA" },
   ANTHROPIC: { name: "Anthropic", issuer: "PreStocks", chip: "AN" },
-  XAI: { name: "xAI", issuer: "PreStocks", chip: "XA" },
+  FIGUREAI: { name: "Figure AI", issuer: "PreStocks", chip: "FA" },
   SPACEX: { name: "SpaceX", issuer: "PreStocks", chip: "SX" },
   ANDURIL: { name: "Anduril", issuer: "PreStocks", chip: "AD" },
   NEURALINK: { name: "Neuralink", issuer: "PreStocks", chip: "NL" },

@@ -8,7 +8,7 @@ const { assessPriceQuality, MAX_AGE_SECONDS } = require("./pyth");
 const FIXTURE_PRICES = {
   OPENAI: { price: 100.0, confidence: 0.5 },
   ANTHROPIC: { price: 50.0, confidence: 0.25 },
-  XAI: { price: 25.0, confidence: 0.2 },
+  FIGUREAI: { price: 25.0, confidence: 0.2 },
   SPACEX: { price: 50.0, confidence: 0.4 },
   ANDURIL: { price: 25.0, confidence: 0.3 },
   NEURALINK: { price: 20.0, confidence: 0.5 },
@@ -69,9 +69,9 @@ function getReferencePrice(feedId, opts = {}) {
   };
 }
 
-// Symbol-based pricing for allowlisted assets whose mint is still VERIFYING
-// (XAI). The snapshot keeps mint:null and source FIXTURE so nothing on-chain
-// can consume it as verified. opts.priceOverride supports labelled simulations.
+// Symbol-based FIXTURE pricing for basket and demo math. The snapshot is
+// labelled source FIXTURE so nothing on-chain consumes it as a verified oracle
+// value. opts.priceOverride supports labelled simulations.
 function getTokenPriceBySymbol(symbol, opts = {}) {
   const asset = listApprovedAssets().find((a) => a.symbol === symbol);
   if (!asset || !asset.allowed) {

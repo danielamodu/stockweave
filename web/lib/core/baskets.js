@@ -11,13 +11,13 @@ const BASKETS = [
   {
     id: "ai-infrastructure",
     name: "AI Infrastructure",
-    theme: "Frontier AI software labs",
+    theme: "Frontier AI: model labs and robotics",
     description:
-      "The three leading frontier-AI labs, capped and cash-buffered. Software-side exposure to the AI build-out.",
+      "The leading AI model labs plus embodied-AI robotics, capped and cash-buffered — exposure to the AI build-out across software and hardware.",
     constituents: [
       { symbol: "OPENAI", targetBps: 3000, holdingsUnits: 3 },
       { symbol: "ANTHROPIC", targetBps: 3000, holdingsUnits: 6 },
-      { symbol: "XAI", targetBps: 3000, holdingsUnits: 12 },
+      { symbol: "FIGUREAI", targetBps: 3000, holdingsUnits: 12 },
       { symbol: "USDC", targetBps: 1000, holdingsUnits: 100 },
     ],
   },

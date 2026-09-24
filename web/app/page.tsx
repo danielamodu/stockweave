@@ -10,7 +10,7 @@ import { GridPlus, Hatch, Cta, CornerPluses } from "@/components/blueprint";
 const MIX = [
   { k: "OpenAI", w: 30, tone: "var(--color-accent)" },
   { k: "Anthropic", w: 30, tone: "#4d4dff" },
-  { k: "xAI", w: 30, tone: "#8f8fff" },
+  { k: "Figure AI", w: 30, tone: "#8f8fff" },
   { k: "Cash", w: 10, tone: "hatch" },
 ] as const;
 
@@ -264,7 +264,7 @@ function StrategyPreview() {
         <div className="px-4 py-24 sm:py-28 sm:px-8 lg:border-r lg:border-[var(--color-grid)] lg:px-10">
           <SectionHead index="The strategy" kicker="AI Infrastructure" title="One basket, fully in the open" />
           <p className="max-w-[46ch] text-[14px] leading-relaxed text-[var(--color-muted)]">
-            Follow the frontier AI labs — OpenAI, Anthropic and xAI — as one simple mix, with a slice
+            Follow the companies building AI — OpenAI, Anthropic and Figure AI — as one simple mix, with a slice
             kept in cash. Caps and reserves keep it sensible; the assistant keeps it on target.
           </p>
           <div className="mt-8">

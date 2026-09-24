@@ -18,7 +18,7 @@ function check(name, fn) {
 }
 
 const NOW = 1_700_000_000;
-const TARGET = { OPENAI: 3000, ANTHROPIC: 3000, XAI: 3000, USDC: 1000 };
+const TARGET = { OPENAI: 3000, ANTHROPIC: 3000, FIGUREAI: 3000, USDC: 1000 };
 const ALLOWED_ACTIONS = new Set(["PROPOSE_REBALANCE", "HOLD", "NONE"]);
 
 function perm(overrides = {}) {
@@ -36,7 +36,7 @@ function driftedInput(overrides = {}) {
   return {
     strategyState: "DRIFTED",
     reasonCodes: ["DRIFT_THRESHOLD"],
-    currentWeightsBps: { OPENAI: 4120, ANTHROPIC: 2380, XAI: 2500, USDC: 1000 },
+    currentWeightsBps: { OPENAI: 4120, ANTHROPIC: 2380, FIGUREAI: 2500, USDC: 1000 },
     targetWeightsBps: TARGET,
     dataQuality: "FRESH",
     proposalAllowed: true,

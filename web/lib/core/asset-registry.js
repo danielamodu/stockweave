@@ -28,9 +28,12 @@ const APPROVED_ASSETS = [
     verification: "VERIFIED",
   },
   {
-    mint: "PreC1KtJ1sBPPqaeeqL6Qb15GTLCYVvyYEwxhdfTwfx",
-    symbol: "XAI",
-    name: "xAI",
+    // Figure AI — mint VERIFIED 2026-09-24 against the live prestocks.com catalogue
+    // API (contract_address) and on-chain metadata. Replaces xAI, which PreStocks
+    // does not list, so the AI Infrastructure basket verifies 3/3 against the issuer.
+    mint: "PreZad18qfPtbxNpMtMuAuX2zVpvkEU8DnJx56faCWd",
+    symbol: "FIGUREAI",
+    name: "Figure AI",
     issuer: "PreStocks",
     pythFeedId: null,
     priceDecimals: 6,
