@@ -3,10 +3,14 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowLeft, Wallet } from "lucide-react";
 import { useSession } from "@/lib/session";
 import { useWalletCancelled } from "@/lib/wallet-events";
 import { BrandMark } from "@/components/brand-mark";
+// Static import → Next gets the intrinsic size + auto blur placeholder, and
+// serves a resized AVIF/WebP per device instead of the full-res source file.
+import connectBg from "../../public/img/connect-bg.webp";
 
 export default function ConnectPage() {
   const router = useRouter();
@@ -24,11 +28,16 @@ export default function ConnectPage() {
   return (
     <main className="grid min-h-dvh grid-cols-1 grid-rows-[13rem_1fr] text-[var(--color-ink)] lg:grid-cols-2 lg:grid-rows-1">
       {/* ---- left: illustration panel ---- */}
-      <div className="relative overflow-hidden">
-        <div
+      <div className="relative overflow-hidden bg-[var(--color-soft)]">
+        <Image
+          src={connectBg}
+          alt=""
           aria-hidden
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('/img/connect-bg.webp')" }}
+          fill
+          preload
+          placeholder="blur"
+          sizes="(min-width: 1024px) 50vw, 100vw"
+          className="object-cover object-center"
         />
         <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-black/25" />
         <div className="relative z-10 flex h-full flex-col justify-between p-6 lg:p-10">
