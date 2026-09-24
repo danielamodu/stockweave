@@ -97,6 +97,21 @@ function i64(n: number | bigint): Buffer {
   }
   return b;
 }
+// Little-endian 64-bit DECODERS. Same story as u64/i64 above, mirrored: the
+// browser `buffer` polyfill has no readBigUInt64LE / readBigInt64LE either (they
+// throw "is not a function", which surfaced as "Couldn't buy: e.readBigUInt64LE
+// is not a function"). Read the 8 bytes by hand. Returns a bigint; callers Number()
+// it exactly as they did the Buffer methods.
+function readU64LE(b: Uint8Array, o: number): bigint {
+  let v = BigInt(0);
+  for (let i = 7; i >= 0; i--) v = (v << BigInt(8)) | BigInt(b[o + i]);
+  return v;
+}
+function readI64LE(b: Uint8Array, o: number): bigint {
+  const u = readU64LE(b, o);
+  const TWO_63 = BigInt(1) << BigInt(63);
+  return u >= TWO_63 ? u - (BigInt(1) << BigInt(64)) : u; // two's-complement
+}
 
 export const EXPLORER = (addr: string) => `https://explorer.solana.com/address/${addr}?cluster=devnet`;
 export const EXPLORER_TX = (sig: string) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
@@ -160,12 +175,12 @@ function decodeRules(data: Buffer): OnchainRules {
   const reserveWeightBps = data.readUInt16LE(o); o += 2;
   const rebalanceDriftBps = data.readUInt16LE(o); o += 2;
   const maxSingleAssetWeightBps = data.readUInt16LE(o); o += 2;
-  const maxTradeNotional = Number(data.readBigUInt64LE(o)); o += 8;
-  const maxDailyNotional = Number(data.readBigUInt64LE(o)); o += 8;
-  const maxPriceAgeSeconds = Number(data.readBigUInt64LE(o)); o += 8;
+  const maxTradeNotional = Number(readU64LE(data, o)); o += 8;
+  const maxDailyNotional = Number(readU64LE(data, o)); o += 8;
+  const maxPriceAgeSeconds = Number(readU64LE(data, o)); o += 8;
   o += 32; // reference_feed_id
   o += 1; // require_user_approval
-  const version = Number(data.readBigUInt64LE(o));
+  const version = Number(readU64LE(data, o));
   return {
     reserveWeightBps,
     rebalanceDriftBps,
@@ -649,8 +664,8 @@ export type OnchainAssetPrice = { mint: string; priceU: number; updatedAt: numbe
 function decodeAssetPrice(data: Buffer): OnchainAssetPrice {
   let o = 8 + 32; // disc + strategy pubkey
   const mint = new PublicKey(data.subarray(o, o + 32)); o += 32;
-  const priceU = Number(data.readBigUInt64LE(o)); o += 8;
-  const updatedAt = Number(data.readBigUInt64LE(o)); // always a positive unix ts
+  const priceU = Number(readU64LE(data, o)); o += 8;
+  const updatedAt = Number(readU64LE(data, o)); // always a positive unix ts
   return { mint: mint.toBase58(), priceU, updatedAt };
 }
 // Published prices for a strategy, keyed by mint. Absent = never published (a
@@ -955,12 +970,12 @@ const NAV_CAPACITY = 128; // must match NAV_CAPACITY in the program.
 // 0..count in order; once wrapped, read `capacity` points starting at head (the
 // oldest) and wrapping — that yields oldest → newest.
 function decodeNavHistory(data: Buffer): NavSeries {
-  const count = Number(data.readBigUInt64LE(8 + 32 + 32));
+  const count = Number(readU64LE(data, 8 + 32 + 32));
   const POINTS_OFF = 8 + 32 + 32 + 8 + 4 + 4; // = 88 (disc + fields + _pad0)
   const readPoint = (slot: number): NavPoint => {
     const o = POINTS_OFF + slot * 16;
-    const ts = Number(data.readBigInt64LE(o));
-    const navU = Number(data.readBigUInt64LE(o + 8));
+    const ts = Number(readI64LE(data, o));
+    const navU = Number(readU64LE(data, o + 8));
     return { ts, navU };
   };
   const live = Math.min(count, NAV_CAPACITY);
