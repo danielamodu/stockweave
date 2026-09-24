@@ -50,21 +50,24 @@ export async function GET() {
   let blockHeight: unknown = null;
   let ok = false;
   let err: string | null = null;
-  try {
+  // Two SINGLE requests, never a JSON-RPC batch: some providers (e.g. the Helius
+  // free tier) 403 batched calls, which made a perfectly healthy RPC look dead
+  // here. The real app only ever issues single Devnet calls, so mirror that.
+  const call = async (method: string, params?: unknown[]) => {
     const res = await fetch(UPSTREAM, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify([
-        { jsonrpc: "2.0", id: 1, method: "getHealth" },
-        { jsonrpc: "2.0", id: 2, method: "getBlockHeight", params: [{ commitment: "confirmed" }] },
-      ]),
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, ...(params ? { params } : {}) }),
       cache: "no-store",
     });
-    const j: any = await res.json();
-    const arr = Array.isArray(j) ? j : [j];
-    health = arr.find((x) => x?.id === 1)?.result ?? arr.find((x) => x?.id === 1)?.error ?? null;
-    blockHeight = arr.find((x) => x?.id === 2)?.result ?? null;
-    ok = res.ok && health === "ok" && typeof blockHeight === "number";
+    const j: any = await res.json().catch(() => null);
+    return { okHttp: res.ok, result: j?.result ?? null, error: j?.error ?? null };
+  };
+  try {
+    const [h, b] = await Promise.all([call("getHealth"), call("getBlockHeight", [{ commitment: "confirmed" }])]);
+    health = h.result ?? h.error ?? null;
+    blockHeight = b.result ?? null;
+    ok = h.okHttp && b.okHttp && health === "ok" && typeof blockHeight === "number";
   } catch (e: any) {
     err = e?.message ?? String(e);
   }
