@@ -2,6 +2,8 @@
 
 **A public, forkable strategy layer for tokenized stocks on Solana — with a constrained AI agent that can propose, but never move, your money.**
 
+> StockWeave lets crypto-native users inspect, simulate, fork, and follow a tokenized-stock strategy without trusting an opaque portfolio manager.
+
 StockWeave turns a basket of tokenized pre-IPO stocks into an on-chain *strategy*: a set of target weights and risk rules anyone can inspect, follow, or fork into their own wallet-owned copy. A constrained agent watches the mix and proposes tune-ups — but every change is guarded on-chain and requires the owner's signature. The agent is granted **READ + PROPOSE**, and execution can *never* be delegated to it.
 
 On the Devnet mirror the whole lifecycle moves real tokens: mint test-USDC, **buy** a basket, watch the agent **propose** a rebalance, **approve + execute** it, track the strategy's **on-chain NAV**, and **sell** back to USDC — every step a signed on-chain transaction, with no server key anywhere in the money path.
@@ -99,7 +101,7 @@ The three money-path instructions the browser signs (`faucet_usdc`, `subscribe`,
 
 Two official strategies ship in the catalogue ([`lib/baskets.js`](lib/baskets.js)):
 
-- **AI Infrastructure** — OpenAI, Anthropic, xAI at 30% each, plus 10% cash.
+- **AI Infrastructure** — OpenAI, Anthropic, Figure AI at 30% each, plus 10% cash.
 - **Space & Deep-Tech** — SpaceX 35%, Anduril 25%, Neuralink 20%, plus 20% cash.
 
 Assets reference **real PreStocks mainnet mints**, verified on-chain (see [`lib/asset-registry.js`](lib/asset-registry.js)). Mints are never fabricated.
@@ -189,6 +191,7 @@ This is a **Devnet demo built for a hackathon**, and it is deliberate about what
 - **Proof-of-return is forward-tracked on-chain, not back-tested.** A creator/keeper-signed `record_nav` appends each basket's live-priced NAV (a weight-faithful index rebased to $1.000000 at inception) to a `NavHistory` ring-buffer PDA. There is deliberately **no back-fill**: the live price source is spot-only and pre-IPO mirror assets have no honest history, so the track record starts empty at launch and grows with real snapshots. The dashboard reads the whole ring in one `getAccountInfo` and shows honest empty / single-point states instead of inventing a curve. Verify it yourself with `node tests/verify-nav.js`, which re-reads both official rings from chain and writes `tests/stage09-evidence.json` (decision D-704).
 - **Prices, not history:** there is no historical NAV, so the UI shows no fabricated time-series or sparklines. Every figure derives from live data.
 - **PreStocks mints** are real *mainnet* mints referenced for identity/verification; the demo itself runs on Devnet.
+- **PreStocks-only scope.** The deployed asset universe is limited to PreStocks-issued tokens; **Tessera, xStocks, and other non-PreStocks pre-IPO assets are deliberately excluded** from this submission, consistent with the PreStocks bounty rule.
 - **The agent proposer endpoint is unauthenticated** (demo only). Proposing is non-custodial and fully guarded on-chain, so the only abuse is spending the agent's own Devnet SOL — but add auth + rate-limiting before any non-demo deployment.
 
 ## Tech stack
