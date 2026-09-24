@@ -29,10 +29,23 @@ export function SolanaWalletProvider({ children }: { children: React.ReactNode }
   //   2. otherwise use the same-origin `/api/rpc` proxy, which forwards to a
   //      server-only Devnet RPC so no key ships in the client bundle;
   //   3. server-render / no window → public devnet as a last resort.
+  //
+  // The `?cluster=devnet` suffix on the proxy URL is load-bearing, not cosmetic:
+  // wallet-adapter picks the chain it tells Phantom to broadcast on by string-
+  // matching the RPC endpoint (getChainForEndpoint → /\bdevnet\b/i), and DEFAULTS
+  // TO MAINNET for anything it can't recognize. A bare `/api/rpc` therefore made
+  // Phantom fetch a Devnet blockhash from us but broadcast to MAINNET, which drops
+  // the tx (unknown blockhash) — surfacing as "block height exceeded" once our
+  // Devnet poll gives up. The proxy ignores the query string, so this only steers
+  // wallet-adapter's cluster inference; it does not change where requests go.
   const endpoint = useMemo(() => {
     const direct = (process.env.NEXT_PUBLIC_SOLANA_RPC ?? "").trim();
-    if (/^https?:\/\//i.test(direct)) return direct;
-    if (typeof window !== "undefined") return `${window.location.origin}/api/rpc`;
+    if (/^https?:\/\//i.test(direct)) {
+      // A direct Devnet URL that lacks the word "devnet" (e.g. a custom RPC host)
+      // would also be misread as mainnet — tag it so the chain inference is right.
+      return /\bdevnet\b/i.test(direct) ? direct : `${direct}${direct.includes("?") ? "&" : "?"}cluster=devnet`;
+    }
+    if (typeof window !== "undefined") return `${window.location.origin}/api/rpc?cluster=devnet`;
     return clusterApiUrl("devnet");
   }, []);
 
