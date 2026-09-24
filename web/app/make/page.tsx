@@ -19,6 +19,7 @@ import {
   EXPLORER_TX,
   type NewBasketAsset,
 } from "@/lib/onchain";
+import { useWalletSender } from "@/lib/use-wallet-sender";
 
 const MAX_SINGLE = 35; // no more than 35% in one company (matches on-chain cap)
 const MIN_CASH = 10; // keep at least 10% in cash (matches on-chain reserve floor)
@@ -36,7 +37,9 @@ function MakeYourOwnView() {
   const basketId = params.get("basket") || "ai-infrastructure";
   const { wallet, ready, customMix, followedBasketId, setCustomMix } = useSession();
   const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey } = useWallet();
+  // Sign in the wallet, broadcast through our own Devnet connection — see hook.
+  const sendTransaction = useWalletSender();
   const { setVisible } = useWalletModal();
 
   const [basket, setBasket] = useState<Basket | null>(null);

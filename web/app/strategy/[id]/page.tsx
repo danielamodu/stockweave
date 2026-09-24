@@ -22,6 +22,7 @@ import {
   EXPLORER_TX,
   type OnchainStrategyState,
 } from "@/lib/onchain";
+import { useWalletSender } from "@/lib/use-wallet-sender";
 
 /* ---------- types (loose — mirrors the engine payload) ---------- */
 type PriceSnap = {
@@ -179,7 +180,9 @@ function StrategyView() {
 
   // --- real on-chain state + live fork (Devnet) ---
   const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey } = useWallet();
+  // Sign in the wallet, broadcast through our own Devnet connection — see hook.
+  const sendTransaction = useWalletSender();
   const { setVisible } = useWalletModal();
   const [onchain, setOnchain] = useState<OnchainStrategyState | null>(null);
   const [forkPhase, setForkPhase] = useState<"idle" | "forking" | "done" | "error">("idle");

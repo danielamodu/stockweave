@@ -32,6 +32,7 @@ import {
   type SubscribeLeg,
 } from "@/lib/onchain";
 import { devnetAsset, devnetMintBySymbol, devnetSeeded, devnetUsdc } from "@/lib/devnet-registry";
+import { useWalletSender } from "@/lib/use-wallet-sender";
 
 export type DashboardValue = {
   // session / gate
@@ -128,7 +129,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { wallet, walletShort, ready, following, followedBasketId, customMix, customOnchain, disconnect, follow } = useSession();
   const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey } = useWallet();
+  // Sign in the wallet, broadcast through our own Devnet connection — see hook.
+  const sendTransaction = useWalletSender();
 
   const [data, setData] = useState<Strategy | null>(null);
   const [agent, setAgent] = useState<Agent | null>(null);
