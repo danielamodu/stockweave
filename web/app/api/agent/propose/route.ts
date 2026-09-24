@@ -28,6 +28,7 @@ import {
 } from "@/lib/onchain";
 import assetRegistry from "@/lib/core/asset-registry";
 import livePrices from "@/lib/core/live-prices";
+import { symbolByDevnetMint } from "@/lib/devnet-registry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -155,9 +156,10 @@ async function handle(req: NextRequest) {
   const rules = state.rules;
   const strategy = new PublicKey(state.strategy);
 
-  // On-chain asset targets → symbols via the approved registry (never fabricate).
+  // On-chain asset targets → symbols. Strategies register DEVNET MIRROR mints, so
+  // map those back first; also accept the mainnet mints from the approved registry.
   const onchainAssets = (await listStrategyAssets(connection, strategy)).filter((a) => a.enabled);
-  const symByMint: Record<string, string> = {};
+  const symByMint: Record<string, string> = { ...symbolByDevnetMint() };
   for (const a of listApprovedAssets() as any[]) symByMint[a.mint] = a.symbol;
   const assets = onchainAssets
     .map((a) => ({ mint: a.mint, symbol: symByMint[a.mint], targetBps: a.targetWeightBps }))

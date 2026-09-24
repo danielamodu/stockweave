@@ -38,6 +38,14 @@ export function devnetMintBySymbol(): Record<string, string> {
   return m;
 }
 
+// Devnet mirror mint → symbol (the inverse). On-chain strategies register mirror
+// mints, so this maps what's actually stored back to a display/registry symbol.
+export function symbolByDevnetMint(): Record<string, string> {
+  const m: Record<string, string> = {};
+  for (const [symbol, mint] of Object.entries(devnetMintBySymbol())) m[mint] = symbol;
+  return m;
+}
+
 export function devnetVault(): string | null {
   return R.vault || null;
 }
