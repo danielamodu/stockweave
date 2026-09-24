@@ -6,6 +6,7 @@ import { ArrowUpRight, Check, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { GridPlus, Hatch, Cta, CornerPluses } from "@/components/blueprint";
+import { BrandMark } from "@/components/brand-mark";
 
 const MIX = [
   { k: "OpenAI", w: 30, tone: "var(--color-accent)" },
@@ -44,8 +45,9 @@ export default function Home() {
           <div className="grid grid-cols-[1fr_auto_1fr] items-center px-4 py-4 sm:px-6">
             <Link
               href="/"
-              className="text-[13px] font-normal uppercase tracking-[0.08em] no-underline text-[var(--color-ink)]"
+              className="inline-flex items-center gap-2 text-[13px] font-normal uppercase tracking-[0.08em] no-underline text-[var(--color-ink)]"
             >
+              <BrandMark size={20} priority />
               Stockweave
             </Link>
             <nav className="hidden border border-[var(--color-grid)] px-5 py-[15px] sm:block">
@@ -390,7 +392,7 @@ function SiteFooter() {
         <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
             <div className="flex items-center gap-2 text-[15px] font-semibold uppercase tracking-[0.06em]">
-              <span className="inline-grid h-6 w-6 place-items-center border border-white/30 font-mono text-[11px] text-white">SW</span>
+              <BrandMark size={24} />
               Stockweave
             </div>
             <p className="mt-4 max-w-[34ch] text-[13px] leading-relaxed text-white/55">

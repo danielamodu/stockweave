@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, Wallet } from "lucide-react";
 import { useSession } from "@/lib/session";
 import { useWalletCancelled } from "@/lib/wallet-events";
+import { BrandMark } from "@/components/brand-mark";
 
 export default function ConnectPage() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export default function ConnectPage() {
         <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-black/25" />
         <div className="relative z-10 flex h-full flex-col justify-between p-6 lg:p-10">
           <div className="flex items-center gap-2 text-white drop-shadow-sm">
-            <span className="inline-grid h-6 w-6 place-items-center border border-white/40 font-mono text-[11px] font-bold">SW</span>
+            <BrandMark size={24} priority />
             <span className="text-[13px] font-semibold uppercase tracking-[0.08em]">Stockweave</span>
           </div>
           <p className="hidden max-w-[16ch] text-[clamp(1.5rem,2.2vw,2.25rem)] font-medium uppercase leading-[1.08] tracking-[-0.03em] text-white drop-shadow-sm lg:block">

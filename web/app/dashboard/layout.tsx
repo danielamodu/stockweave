@@ -9,6 +9,7 @@ import { usePathname } from "next/navigation";
 import { LayoutGrid, Layers, Copy, SlidersHorizontal, Bot, Menu, X } from "lucide-react";
 import { DashboardProvider, useDashboard } from "@/components/dashboard/context";
 import { cn } from "@/lib/utils";
+import { BrandMark } from "@/components/brand-mark";
 
 // Left-rail item — blue when active, with a short accent tick on the left.
 function NavItem({
@@ -67,7 +68,8 @@ function Sidebar() {
   return (
     <aside className="sticky top-0 hidden h-dvh w-[212px] shrink-0 flex-col self-start border-r border-[var(--color-grid)] lg:flex">
       <div className="border-b border-[var(--color-grid)] px-5 py-4">
-        <Link href="/" className="block text-[14px] uppercase tracking-[0.1em] no-underline text-[var(--color-ink)]">
+        <Link href="/" className="flex items-center gap-2 text-[14px] uppercase tracking-[0.1em] no-underline text-[var(--color-ink)]">
+          <BrandMark size={20} />
           Stockweave
         </Link>
         <div className="bp-mono-label mt-1 text-[8px]">Strategy desk</div>
@@ -119,8 +121,9 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
             <Link
               href="/"
               onClick={onClose}
-              className="block text-[14px] uppercase tracking-[0.1em] no-underline text-[var(--color-ink)]"
+              className="flex items-center gap-2 text-[14px] uppercase tracking-[0.1em] no-underline text-[var(--color-ink)]"
             >
+              <BrandMark size={20} />
               Stockweave
             </Link>
             <div className="bp-mono-label mt-1 text-[8px]">Strategy desk</div>
@@ -173,7 +176,8 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
         >
           <Menu size={18} />
         </button>
-        <Link href="/" className="no-underline text-[var(--color-muted)] transition-colors hover:text-[var(--color-ink)] lg:hidden">
+        <Link href="/" className="inline-flex items-center gap-1.5 no-underline text-[var(--color-muted)] transition-colors hover:text-[var(--color-ink)] lg:hidden">
+          <BrandMark size={16} />
           Stockweave
         </Link>
         <span className="hidden lg:inline">Desk</span>
