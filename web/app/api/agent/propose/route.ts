@@ -45,8 +45,19 @@ const ASSET_LABEL: Record<string, string> = {
   NEURALINK: "Neuralink",
 };
 
-const RPC =
-  process.env.AGENT_RPC || process.env.HELIUS_RPC || process.env.NEXT_PUBLIC_SOLANA_RPC || clusterApiUrl("devnet");
+// Resolve a USABLE Devnet RPC. A non-empty but malformed env value (a bare host,
+// an api-key, or leftover junk) must not win the `||` chain and crash
+// `new Connection` — sanitize it, tolerate a missing protocol, else fall back.
+function resolveRpc(): string {
+  for (const raw of [process.env.AGENT_RPC, process.env.HELIUS_RPC, process.env.NEXT_PUBLIC_SOLANA_RPC]) {
+    const c = (raw ?? "").trim();
+    if (!c) continue;
+    if (/^https?:\/\//i.test(c)) return c;
+    if (/^[\w.-]+\.[a-z]{2,}(?::\d+)?(?:[/?].*)?$/i.test(c)) return `https://${c}`; // protocol-less host
+  }
+  return clusterApiUrl("devnet");
+}
+const RPC = resolveRpc();
 const HERMES = "https://hermes.pyth.network/v2/updates/price/latest";
 const NAV_MODEL_USD = 10000; // model portfolio size, matches the engine snapshot
 // __PROPOSE_APPEND__
