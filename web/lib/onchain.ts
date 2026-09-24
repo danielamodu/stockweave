@@ -252,10 +252,10 @@ export async function forkOfficialStrategy(params: {
 
   const tx = new Transaction().add(ix);
   tx.feePayer = walletPublicKey;
-  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
   tx.recentBlockhash = blockhash;
   const signature = await sendTransaction(tx, connection);
-  await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight: (await connection.getLatestBlockhash("confirmed")).lastValidBlockHeight }, "confirmed");
+  await confirmSig(connection, signature, blockhash, lastValidBlockHeight);
   return { signature, forkStrategy: fork.toBase58() };
 }
 
@@ -284,6 +284,32 @@ export const DEFAULT_NEW_RULES: NewBasketRules = {
 
 export type NewBasketAsset = { mint: string; targetBps: number; maxBps?: number };
 
+// Confirm a signature robustly. On Devnet the plain block-height strategy often
+// reports "block height exceeded" on a laggy public RPC — or when the wallet
+// approval takes a few seconds — even though the transaction actually landed. On
+// that failure, keep polling the signature status a while longer and accept a tx
+// that did confirm before surfacing the error.
+async function confirmSig(
+  connection: Connection,
+  signature: string,
+  blockhash: string,
+  lastValidBlockHeight: number,
+): Promise<void> {
+  try {
+    const res = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+    if (res.value?.err) throw new Error(`Transaction failed on-chain: ${JSON.stringify(res.value.err)}`);
+    return;
+  } catch (err) {
+    for (let i = 0; i < 12; i++) {
+      const st = (await connection.getSignatureStatuses([signature])).value[0];
+      if (st?.err) throw new Error(`Transaction failed on-chain: ${JSON.stringify(st.err)}`);
+      if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return;
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+    throw err;
+  }
+}
+
 // Assemble, sign (via the wallet), send, and confirm a set of instructions.
 async function sendIxs(
   connection: Connection,
@@ -296,7 +322,7 @@ async function sendIxs(
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
   tx.recentBlockhash = blockhash;
   const signature = await sendTransaction(tx, connection);
-  await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+  await confirmSig(connection, signature, blockhash, lastValidBlockHeight);
   return signature;
 }
 // Create a REAL strategy on-chain in one wallet-signed transaction:

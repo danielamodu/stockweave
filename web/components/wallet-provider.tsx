@@ -22,7 +22,13 @@ const BENIGN = new Set([
 ]);
 
 export function SolanaWalletProvider({ children }: { children: React.ReactNode }) {
-  const endpoint = useMemo(() => clusterApiUrl("devnet"), []);
+  // Prefer a configured Devnet RPC; the public devnet endpoint is heavily
+  // rate-limited and makes wallet-signed txns time out ("block height exceeded").
+  // NEXT_PUBLIC_* is exposed to the browser, so only point this at a Devnet RPC.
+  const endpoint = useMemo(() => {
+    const c = (process.env.NEXT_PUBLIC_SOLANA_RPC ?? "").trim();
+    return /^https?:\/\//i.test(c) ? c : clusterApiUrl("devnet");
+  }, []);
 
   const onError = useCallback((error: WalletError) => {
     if (BENIGN.has(error?.name)) {
