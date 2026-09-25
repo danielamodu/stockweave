@@ -193,7 +193,7 @@ export function StrategyView({ basketId: basketIdProp, embedded = false }: { bas
   const basketName = data?.basket?.name || "Strategy";
   const basketDesc =
     data?.basket?.description ||
-    "A transparent, forkable tokenized-stock strategy — every asset, rule, and agent permission inspectable before you follow or fork.";
+    "A transparent, forkable tokenized-stock strategy.";
   const weightOrder = v ? Object.keys(v.targetWeights) : [];
 
   // --- real on-chain state + live fork (Devnet) ---
@@ -379,8 +379,9 @@ export function StrategyView({ basketId: basketIdProp, embedded = false }: { bas
           <section className="mt-6">
             <Label>Valuation — Pyth-aware</Label>
             <p className="mb-4 max-w-[80ch] text-[13px] text-[var(--color-muted)]">
-              Token prices come from the price adapter with source and timestamp. Reference prices
-              come from Pyth where a verified feed exists — currently <code className="font-mono text-[var(--color-ink)]">UNKNOWN</code>,
+              Token prices are {data?.dataMode === "FIXTURE" ? "fixture fallbacks" : "live from Jupiter"}, each
+              shown with its source and timestamp. Reference prices come from Pyth where a verified feed exists —
+              currently <code className="font-mono text-[var(--color-ink)]">UNKNOWN</code> for these pre-IPO tokens,
               never estimated. Demo simulations are labelled and never presented as live market data.
             </p>
             <div className="grid gap-4 lg:grid-cols-2">
@@ -617,7 +618,19 @@ export function StrategyView({ basketId: basketIdProp, embedded = false }: { bas
             <div className="border border-[var(--color-grid)] border-l-[3px] border-l-[var(--color-warn)] p-5 text-[13px] leading-relaxed text-[var(--color-muted)]">
               <strong className="text-[var(--color-ink)]">Risk and asset disclosures.</strong>
               <ul className="mt-3 list-disc space-y-1.5 pl-5">
-                <li>Fixture data only (<code className="font-mono text-[var(--color-ink)]">DATA_MODE: FIXTURE</code>) — no live prices, no Pyth feed yet.</li>
+                {data?.dataMode === "FIXTURE" ? (
+                  <li>
+                    Live pricing didn&apos;t load, so token prices fall back to fixture data
+                    (<code className="font-mono text-[var(--color-ink)]">DATA_MODE: FIXTURE</code>). No verified
+                    Pyth feed exists for these pre-IPO tokens yet, so reference NAV reads UNKNOWN.
+                  </li>
+                ) : (
+                  <li>
+                    Token prices are live from Jupiter (real on-chain market data), each shown with its source
+                    and timestamp. No verified Pyth feed exists for these pre-IPO tokens yet, so reference NAV
+                    reads UNKNOWN — never estimated.
+                  </li>
+                )}
                 <li>
                   PreStocks tokens are SPV-backed economic exposure to pre-IPO companies,{" "}
                   <strong className="text-[var(--color-ink)]">not equity ownership</strong>: no shares, no voting rights,
