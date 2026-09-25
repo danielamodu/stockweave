@@ -149,6 +149,13 @@ button:focus:not(:focus-visible) {
   animation: bp-grow 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+/* Live-tick: a figure briefly washes accent when fresh data lands */
+@keyframes bp-flash {
+  0%   { background-color: rgba(0, 0, 255, 0.16); }
+  100% { background-color: transparent; }
+}
+.bp-flash { animation: bp-flash 0.9s ease-out; }
+
 /* Holding row hover — a hairline accent rail slides in on the left */
 .bp-row {
   position: relative;
@@ -173,4 +180,5 @@ button:focus:not(:focus-visible) {
   .bp-pulse, .bp-grow { animation: none; }
   .bp-grow { transform: none; }
   .bp-row::before { transition: none; }
+  .bp-flash { animation: none; }
 }

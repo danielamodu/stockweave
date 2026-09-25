@@ -57,7 +57,7 @@ function NavSections({ onNavigate }: { onNavigate?: () => void }) {
       <NavItem icon={Layers} label="Holdings" href="/dashboard/holdings" active={isActive("/dashboard/holdings")} muted={!following} onClick={onNavigate} />
       <div className="bp-mono-label px-3 pb-1 pt-4 text-[8px]">Invest</div>
       <NavItem icon={Bot} label="Assistant" href="/dashboard/assistant" active={isActive("/dashboard/assistant")} muted={!following} onClick={onNavigate} />
-      <NavItem icon={Copy} label="Strategy" href={stratHref} muted={!following} onClick={onNavigate} />
+      <NavItem icon={Copy} label="Strategy" href={stratHref} active={isActive(stratHref)} muted={!following} onClick={onNavigate} />
       <NavItem icon={SlidersHorizontal} label="Make your own" href={makeHref} muted={!following} onClick={onNavigate} />
     </nav>
   );
@@ -160,6 +160,7 @@ const CRUMB: Record<string, string> = {
   "/dashboard": "Overview",
   "/dashboard/holdings": "Holdings",
   "/dashboard/assistant": "Assistant",
+  "/dashboard/strategy": "Strategy",
 };
 
 // Sticky top bar: breadcrumb, the demo scenario switch, live + wallet chips.

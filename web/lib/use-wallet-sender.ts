@@ -26,11 +26,13 @@ import type { SendFn } from "@/lib/onchain";
 export function useWalletSender(): SendFn {
   const { signTransaction, sendTransaction } = useWallet();
   return useCallback<SendFn>(
-    async (tx, connection) => {
+    async (tx, connection, onPhase) => {
       // feePayer + recentBlockhash are already set by the caller, so the wallet
       // signs a complete message and we own the submission.
       if (signTransaction) {
+        onPhase?.("signing");
         const signed = await signTransaction(tx);
+        onPhase?.("broadcasting");
         return connection.sendRawTransaction(signed.serialize(), {
           skipPreflight: false,
           preflightCommitment: "confirmed",

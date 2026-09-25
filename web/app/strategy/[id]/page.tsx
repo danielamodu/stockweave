@@ -140,11 +140,14 @@ function ReadoutRow({ label, snap }: { label: string; snap: PriceSnap }) {
   );
 }
 
-function StrategyView() {
+export function StrategyView({ basketId: basketIdProp, embedded = false }: { basketId?: string; embedded?: boolean }) {
   const params = useSearchParams();
   const routeParams = useParams();
-  const basketId = String(routeParams?.id || "ai-infrastructure");
+  const basketId = basketIdProp ?? String(routeParams?.id || "ai-infrastructure");
   const demo = params.get("demo") || "fresh";
+  // Simulation chips stay on whichever route the inspector is mounted on, so an
+  // in-app view never bounces you out to the public page.
+  const simBase = embedded ? "/dashboard/strategy?demo=" : "/strategy/" + basketId + "?demo=";
   const [data, setData] = useState<Strategy | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
   const [preview, setPreview] = useState(
@@ -223,24 +226,8 @@ function StrategyView() {
     }
   }, [publicKey, sendTransaction, connection, basketId, setVisible]);
 
-  return (
-    <main className="min-h-dvh bg-[var(--color-page)] text-[var(--color-ink)]">
-      <div className="mx-3 min-h-dvh border-x border-[var(--color-grid)] sm:mx-6 lg:mx-10">
-        {/* top bar */}
-        <div className="flex items-center justify-between border-b border-[var(--color-grid)] px-4 py-4 sm:px-6">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-[13px] uppercase tracking-[0.08em] text-[var(--color-ink)] no-underline transition-colors hover:text-[var(--color-accent)]"
-          >
-            <ArrowLeft size={15} /> Stockweave
-          </Link>
-          <div className="flex items-center gap-4">
-            <MarketStatus />
-            <span className="bp-mono-label text-[10px]">Strategy · {basketName}</span>
-          </div>
-        </div>
-
-        <div className="px-4 py-8 sm:px-8 lg:px-10">
+  const body = (
+    <div className={embedded ? undefined : "px-4 py-8 sm:px-8 lg:px-10"}>
           {/* header */}
           <div className="flex flex-wrap gap-2">
             <span
@@ -253,9 +240,11 @@ function StrategyView() {
             >
               Data_mode: {data?.dataMode === "LIVE" ? "Live (Jupiter)" : data ? "Fixture" : "…"}
             </span>
-            <span className="inline-flex items-center border border-black/10 bg-black/[0.06] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#505050]">
-              No wallet required
-            </span>
+            {!embedded && (
+              <span className="inline-flex items-center border border-black/10 bg-black/[0.06] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#505050]">
+                No wallet required
+              </span>
+            )}
           </div>
           <h1 className="mt-5 font-sans text-[clamp(1.8rem,3.4vw,2.6rem)] font-medium uppercase leading-[1.06] tracking-[-0.03em]">
             {basketName} Basket
@@ -441,7 +430,7 @@ function StrategyView() {
               {DEMOS.map(([key, label]) => (
                 <Link
                   key={key}
-                  href={"/strategy/" + basketId + "?demo=" + key}
+                  href={simBase + key}
                   className={cn(
                     "border px-3 py-1 font-mono text-[11px] no-underline transition-colors",
                     demo === key
@@ -567,7 +556,8 @@ function StrategyView() {
             </p>
           </section>
 
-          {/* page-state preview */}
+          {/* page-state preview — a public-page demo affordance; hidden in-app */}
+          {!embedded && (
           <section className="mt-10">
             <Label>Page states</Label>
             <div className="flex flex-wrap gap-2">
@@ -591,6 +581,7 @@ function StrategyView() {
               {preview}
             </div>
           </section>
+          )}
 
           {/* disclosures */}
           <section className="mt-10 mb-4">
@@ -608,7 +599,31 @@ function StrategyView() {
               </ul>
             </div>
           </section>
+    </div>
+  );
+
+  // Embedded in the dashboard shell: the sidebar + top bar already frame the
+  // page, so return the body bare. Standalone (public route): wrap it in its own
+  // full-bleed frame with a back-to-home top bar.
+  if (embedded) return body;
+
+  return (
+    <main className="min-h-dvh bg-[var(--color-page)] text-[var(--color-ink)]">
+      <div className="mx-3 min-h-dvh border-x border-[var(--color-grid)] sm:mx-6 lg:mx-10">
+        {/* top bar */}
+        <div className="flex items-center justify-between border-b border-[var(--color-grid)] px-4 py-4 sm:px-6">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-[13px] uppercase tracking-[0.08em] text-[var(--color-ink)] no-underline transition-colors hover:text-[var(--color-accent)]"
+          >
+            <ArrowLeft size={15} /> Stockweave
+          </Link>
+          <div className="flex items-center gap-4">
+            <MarketStatus />
+            <span className="bp-mono-label text-[10px]">Strategy · {basketName}</span>
+          </div>
         </div>
+        {body}
       </div>
     </main>
   );

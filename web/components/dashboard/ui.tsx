@@ -3,6 +3,7 @@
 // Shared presentational pieces for the dashboard shell and its pages.
 // Pure/presentational — no session, router or data fetching lives here so the
 // Overview / Holdings / Assistant routes can all reuse the same vocabulary.
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { ASSET_LABEL, pct, segTone } from "@/lib/present";
@@ -48,6 +49,63 @@ export const BASELINE = 10000; // on-target starting value (model portfolio)
 
 export function fmtUsd(n: number, max = 2) {
   return "$" + n.toLocaleString(undefined, { minimumFractionDigits: max, maximumFractionDigits: max });
+}
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+// Ease a number from its previous value to `target` over `duration` ms (easeOutCubic),
+// so a KPI that changes rolls to its new figure instead of snapping. Honours
+// reduced-motion (snaps) and cancels cleanly if the target moves mid-animation.
+function useCountUp(target: number, duration = 550): number {
+  const [val, setVal] = useState(target);
+  const fromRef = useRef(target);
+  const rafRef = useRef(0);
+  useEffect(() => {
+    const from = fromRef.current;
+    if (prefersReducedMotion() || from === target) {
+      fromRef.current = target;
+      setVal(target);
+      return;
+    }
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setVal(from + (target - from) * eased);
+      if (t < 1) rafRef.current = requestAnimationFrame(tick);
+      else fromRef.current = target;
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target, duration]);
+  return val;
+}
+
+// True for ~one animation after `value` changes (never on first mount), so a
+// figure can flash accent when fresh data lands. Re-adding the class off→on
+// restarts the CSS animation.
+function useFlash(value: unknown): boolean {
+  const [on, setOn] = useState(false);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    setOn(true);
+    const id = setTimeout(() => setOn(false), 900);
+    return () => clearTimeout(id);
+  }, [value]);
+  return on;
+}
+
+// A USD figure that rolls to new values and flashes when it changes — the
+// "this is live" tell on the KPI band. Same tabular-nums vocabulary as StatCell.
+export function AnimatedUsd({ value, max = 2, className }: { value: number; max?: number; className?: string }) {
+  const n = useCountUp(value);
+  const flash = useFlash(value);
+  return <span className={cn("inline-block tabular-nums", flash && "bp-flash", className)}>{fmtUsd(n, max)}</span>;
 }
 
 // Bordered blueprint card with the four corner plus-marks.
@@ -230,7 +288,7 @@ export function PerformancePanel({ series, loading }: { series: NavSeriesUi | nu
               <div className="text-[var(--color-faint)]">per $1.00 at launch</div>
             </div>
           </div>
-          <NavSparkline points={pts} up={sinceLaunch! >= 0} />
+          <NavSparkline points={pts} base={base} up={sinceLaunch! >= 0} />
           <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--color-faint)]">{subtitle}</div>
         </div>
       ) : (
@@ -254,8 +312,10 @@ export function PerformancePanel({ series, loading }: { series: NavSeriesUi | nu
 
 // Minimal blueprint sparkline: a rebased NAV line with a dashed launch baseline.
 // viewBox is unitless + preserveAspectRatio none so it stretches to the card; the
-// stroke stays hairline-crisp via vector-effect.
-function NavSparkline({ points, up }: { points: NavPointUi[]; up: boolean }) {
+// stroke stays hairline-crisp via vector-effect. Hovering reads out the snapshot
+// under the cursor (date + value per $1) with a crosshair + dot — a real chart,
+// not a decoration.
+function NavSparkline({ points, base, up }: { points: NavPointUi[]; base: number; up: boolean }) {
   const W = 100;
   const H = 34;
   const vals = points.map((p) => p.navU);
@@ -268,34 +328,82 @@ function NavSparkline({ points, up }: { points: NavPointUi[]; up: boolean }) {
   const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(2)} ${y(p.navU).toFixed(2)}`).join(" ");
   const baseY = y(points[0].navU);
   const stroke = up ? "var(--color-up)" : "var(--color-down)";
+
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = wrapRef.current;
+    if (!el || n < 2) return;
+    const rect = el.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    setHover(Math.round(frac * (n - 1)));
+  };
+  const active = hover != null ? points[hover] : null;
+  const activeFrac = hover != null ? hover / (n - 1) : 0;
+  const activeVal = active && base > 0 ? active.navU / base : null;
+  const activeDate =
+    active != null
+      ? new Date(active.ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      : null;
+
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      className="mt-4 h-16 w-full border border-[var(--color-grid)] bg-[var(--color-soft)]/40"
-      role="img"
-      aria-label="NAV since launch"
+    <div
+      ref={wrapRef}
+      className="relative mt-4"
+      onPointerMove={onMove}
+      onPointerLeave={() => setHover(null)}
     >
-      <line
-        x1="0"
-        y1={baseY}
-        x2={W}
-        y2={baseY}
-        stroke="var(--color-grid-strong)"
-        strokeWidth="0.5"
-        strokeDasharray="2 2"
-        vectorEffect="non-scaling-stroke"
-      />
-      <path
-        d={line}
-        fill="none"
-        stroke={stroke}
-        strokeWidth="1.5"
-        vectorEffect="non-scaling-stroke"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="block h-16 w-full border border-[var(--color-grid)] bg-[var(--color-soft)]/40"
+        role="img"
+        aria-label="NAV since launch"
+      >
+        <line
+          x1="0"
+          y1={baseY}
+          x2={W}
+          y2={baseY}
+          stroke="var(--color-grid-strong)"
+          strokeWidth="0.5"
+          strokeDasharray="2 2"
+          vectorEffect="non-scaling-stroke"
+        />
+        <path
+          d={line}
+          fill="none"
+          stroke={stroke}
+          strokeWidth="1.5"
+          vectorEffect="non-scaling-stroke"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {active && (
+          <>
+            <line
+              x1={x(hover!)}
+              y1="0"
+              x2={x(hover!)}
+              y2={H}
+              stroke="var(--color-ink)"
+              strokeWidth="0.5"
+              vectorEffect="non-scaling-stroke"
+            />
+            <circle cx={x(hover!)} cy={y(active.navU)} r="2" fill={stroke} vectorEffect="non-scaling-stroke" />
+          </>
+        )}
+      </svg>
+      {active && (
+        <div
+          className="pointer-events-none absolute -top-1 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap border border-[var(--color-grid-strong)] bg-[var(--color-page)] px-2 py-1 font-mono text-[10px] leading-tight tabular-nums shadow-sm"
+          style={{ left: `clamp(24px, ${(activeFrac * 100).toFixed(2)}%, calc(100% - 24px))` }}
+        >
+          <span className="text-[var(--color-ink)]">{activeVal != null ? fmtUsd(activeVal, 4) : "—"}</span>
+          <span className="ml-1.5 text-[var(--color-faint)] uppercase tracking-[0.08em]">{activeDate}</span>
+        </div>
+      )}
+    </div>
   );
 }
 

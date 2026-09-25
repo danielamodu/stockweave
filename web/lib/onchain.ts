@@ -233,7 +233,14 @@ export async function readOfficialStrategy(
   };
 }
 
-export type SendFn = (tx: Transaction, connection: Connection) => Promise<string>;
+// The live phase of one on-chain submission, reported to the UI so a "Sign →
+// Broadcast → Confirm" stepper can reflect exactly where a txn is. Optional: a
+// SendFn that ignores the callback behaves as before.
+export type SendPhase = "signing" | "broadcasting" | "confirming";
+export type SendFn = (tx: Transaction, connection: Connection, onPhase?: (p: SendPhase) => void) => Promise<string>;
+// Multi-transaction progress (buy/sell can span several txns). `step`/`steps`
+// count which txn of how many; `phase` is where that txn is.
+export type SendProgress = (s: { phase: SendPhase; step: number; steps: number }) => void;
 
 // Build + send a REAL fork_strategy transaction. `sendTransaction` is the
 // wallet-adapter fn (signs with the connected wallet, submits). Returns the
@@ -332,17 +339,21 @@ async function confirmSig(
 
 
 // Assemble, sign (via the wallet), send, and confirm a set of instructions.
+// `onPhase` (optional) is forwarded to the wallet sender for sign/broadcast and
+// fired here for the confirm wait, so callers can drive a live stepper.
 async function sendIxs(
   connection: Connection,
   feePayer: PublicKey,
   sendTransaction: SendFn,
   ixs: TransactionInstruction[],
+  onPhase?: (p: SendPhase) => void,
 ): Promise<string> {
   const tx = new Transaction().add(...ixs);
   tx.feePayer = feePayer;
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
   tx.recentBlockhash = blockhash;
-  const signature = await sendTransaction(tx, connection);
+  const signature = await sendTransaction(tx, connection, onPhase);
+  onPhase?.("confirming");
   await confirmSig(connection, signature, lastValidBlockHeight);
   return signature;
 }
@@ -808,8 +819,9 @@ export async function faucetUsdcOnchain(params: {
   sendTransaction: SendFn;
   usdcMint: PublicKey;
   amountBaseUnits: number | bigint;
+  onProgress?: SendProgress;
 }): Promise<string> {
-  const { connection, walletPublicKey, sendTransaction, usdcMint, amountBaseUnits } = params;
+  const { connection, walletPublicKey, sendTransaction, usdcMint, amountBaseUnits, onProgress } = params;
   const vault = vaultPda();
   const recipientUsdc = ataFor(walletPublicKey, usdcMint);
   const ix = new TransactionInstruction({
@@ -825,7 +837,9 @@ export async function faucetUsdcOnchain(params: {
     ],
     data: Buffer.concat([Buffer.from(IX.faucet_usdc), u64(amountBaseUnits)]),
   });
-  return sendIxs(connection, walletPublicKey, sendTransaction, [ix]);
+  return sendIxs(connection, walletPublicKey, sendTransaction, [ix], (phase) =>
+    onProgress?.({ phase, step: 1, steps: 1 }),
+  );
 }
 
 export type SubscribeLeg = { assetMint: string; usdcIn: number | bigint; assetQty: number | bigint };
@@ -840,8 +854,9 @@ export async function subscribeToBasketOnchain(params: {
   strategyId: string;
   usdcMint: PublicKey;
   legs: SubscribeLeg[];
+  onProgress?: SendProgress;
 }): Promise<{ signatures: string[]; strategy: string }> {
-  const { connection, walletPublicKey, sendTransaction, strategyCreator, strategyId, usdcMint, legs } = params;
+  const { connection, walletPublicKey, sendTransaction, strategyCreator, strategyId, usdcMint, legs, onProgress } = params;
   if (legs.length === 0) throw new Error("Nothing to buy");
   const strategy = strategyPda(strategyCreator, strategyId);
   const vault = vaultPda();
@@ -872,9 +887,13 @@ export async function subscribeToBasketOnchain(params: {
   };
   const signatures: string[] = [];
   const CHUNK = 5; // ~12 accounts/leg; 5 legs stays well under the tx size limit
+  const steps = Math.ceil(legs.length / CHUNK);
   for (let i = 0; i < legs.length; i += CHUNK) {
     const ixs = legs.slice(i, i + CHUNK).map(mkIx);
-    signatures.push(await sendIxs(connection, walletPublicKey, sendTransaction, ixs));
+    const step = i / CHUNK + 1;
+    signatures.push(
+      await sendIxs(connection, walletPublicKey, sendTransaction, ixs, (phase) => onProgress?.({ phase, step, steps })),
+    );
   }
   return { signatures, strategy: strategy.toBase58() };
 }
@@ -891,8 +910,9 @@ export async function redeemFromBasketOnchain(params: {
   strategyId: string;
   usdcMint: PublicKey;
   legs: RedeemLeg[];
+  onProgress?: SendProgress;
 }): Promise<{ signatures: string[]; strategy: string }> {
-  const { connection, walletPublicKey, sendTransaction, strategyCreator, strategyId, usdcMint, legs } = params;
+  const { connection, walletPublicKey, sendTransaction, strategyCreator, strategyId, usdcMint, legs, onProgress } = params;
   const active = legs.filter((l) => BigInt(l.assetQty) > BigInt(0));
   if (active.length === 0) throw new Error("Nothing to sell");
   const strategy = strategyPda(strategyCreator, strategyId);
@@ -924,9 +944,13 @@ export async function redeemFromBasketOnchain(params: {
   };
   const signatures: string[] = [];
   const CHUNK = 5; // ~13 accounts/leg; 5 legs stays well under the tx size limit
+  const steps = Math.ceil(active.length / CHUNK);
   for (let i = 0; i < active.length; i += CHUNK) {
     const ixs = active.slice(i, i + CHUNK).map(mkIx);
-    signatures.push(await sendIxs(connection, walletPublicKey, sendTransaction, ixs));
+    const step = i / CHUNK + 1;
+    signatures.push(
+      await sendIxs(connection, walletPublicKey, sendTransaction, ixs, (phase) => onProgress?.({ phase, step, steps })),
+    );
   }
   return { signatures, strategy: strategy.toBase58() };
 }

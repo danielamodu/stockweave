@@ -29,6 +29,8 @@ import {
   type NavSeries,
   type OnchainStrategyState,
   type RedeemLeg,
+  type SendPhase,
+  type SendProgress,
   type SubscribeLeg,
 } from "@/lib/onchain";
 import { devnetAsset, devnetMintBySymbol, devnetSeeded, devnetUsdc } from "@/lib/devnet-registry";
@@ -95,9 +97,11 @@ export type DashboardValue = {
   fauceting: boolean;
   buying: boolean;
   selling: boolean;
+  // Live sign → broadcast → confirm progress for the in-flight quick action.
+  txStep: { action: "faucet" | "buy" | "sell"; phase: SendPhase; step: number; steps: number } | null;
   getTestUsdc: () => void;
   buyBasket: () => void;
-  sellBasket: () => void;
+  sellBasket: (fraction?: number) => void;
 };
 
 // A REAL on-chain proposal returned by /api/agent/propose (agent-signed). The
@@ -154,6 +158,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [fauceting, setFauceting] = useState(false);
   const [buying, setBuying] = useState(false);
   const [selling, setSelling] = useState(false);
+  // Live sign → broadcast → confirm progress for the active quick action.
+  const [txStep, setTxStep] = useState<DashboardValue["txStep"]>(null);
   const [refreshTick, setRefreshTick] = useState(0);
 
   // Wallet-gate: once the session has resolved, a disconnected user goes back.
@@ -522,6 +528,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         sendTransaction,
         usdcMint: new PublicKey(usdc.mint),
         amountBaseUnits,
+        onProgress: ({ phase, step, steps }) => setTxStep({ action: "faucet", phase, step, steps }),
       });
       setRefreshTick((t) => t + 1);
       setActivity((a) => [`You minted 1,000 test USDC on-chain · ${sig.slice(0, 8)}… · just now`, ...a]);
@@ -531,6 +538,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       toast(`Couldn't get test USDC: ${msg}`);
     } finally {
       setFauceting(false);
+      setTxStep(null);
     }
   }, [publicKey, connection, sendTransaction]);
 
@@ -583,6 +591,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         strategyId: followedBasketId,
         usdcMint: new PublicKey(usdc.mint),
         legs,
+        onProgress: ({ phase, step, steps }) => setTxStep({ action: "buy", phase, step, steps }),
       });
       setRefreshTick((t) => t + 1);
       const last = signatures[signatures.length - 1] ?? "";
@@ -593,59 +602,70 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       toast(`Couldn't buy: ${msg}`);
     } finally {
       setBuying(false);
+      setTxStep(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicKey, connection, sendTransaction, followedBasketId, displayWeights, tokenAmounts, order, mintBySymbol]);
 
   // Sell (redeem) the followed mix on-chain — the mirror image of buyBasket. For
-  // every non-cash constituent the wallet actually holds, burn the whole balance
-  // and take USDC back from the strategy treasury at the on-chain published price
-  // (D-705). The redeemed quantity is sized from the wallet's REAL on-chain
-  // balance (uiAmount × 10^decimals), and usdc_out is computed on-chain from the
-  // price — the caller supplies nothing to game. Redeems against the same official
+  // every non-cash constituent the wallet actually holds, burn `fraction` of the
+  // balance (1 = full exit; 0.25 = trim a quarter) and take USDC back from the
+  // strategy treasury at the on-chain published price (D-705). The redeemed
+  // quantity is sized from the wallet's REAL on-chain balance (uiAmount ×
+  // 10^decimals × fraction), and usdc_out is computed on-chain from the price —
+  // the caller supplies nothing to game. Redeems against the same official
   // strategy the tokens were minted by, so the treasury that pays out is the one
   // subscribe funded.
-  const sellBasket = useCallback(async () => {
-    const usdc = devnetUsdc();
-    if (!publicKey || !usdc?.mint || !followedBasketId || !tokenAmounts) return;
-    const legs: RedeemLeg[] = [];
-    for (const s of order) {
-      if (s === "USDC") continue;
-      const mint = mintBySymbol[s];
-      const asset = devnetAsset(s);
-      const uiAmt = tokenAmounts[s] ?? 0;
-      if (!mint || !asset || uiAmt <= 0) continue;
-      const assetQty = Math.round(uiAmt * 10 ** asset.decimals); // full-exit, base units
-      if (assetQty <= 0) continue;
-      legs.push({ assetMint: mint, assetQty });
-    }
-    if (legs.length === 0) {
-      toast("Nothing to sell — you don't hold any of this mix yet.");
-      return;
-    }
-    setSelling(true);
-    try {
-      const { signatures } = await redeemFromBasketOnchain({
-        connection,
-        walletPublicKey: publicKey,
-        sendTransaction,
-        strategyCreator: OFFICIAL_CREATOR,
-        strategyId: followedBasketId,
-        usdcMint: new PublicKey(usdc.mint),
-        legs,
-      });
-      setRefreshTick((t) => t + 1);
-      const last = signatures[signatures.length - 1] ?? "";
-      setActivity((a) => [`You sold the mix on-chain · ${legs.length} assets · ${last.slice(0, 8)}… · just now`, ...a]);
-      toast("Sold the mix on-chain");
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast(`Couldn't sell: ${msg}`);
-    } finally {
-      setSelling(false);
-    }
+  const sellBasket = useCallback(
+    async (fraction = 1) => {
+      const usdc = devnetUsdc();
+      if (!publicKey || !usdc?.mint || !followedBasketId || !tokenAmounts) return;
+      const f = Math.min(1, Math.max(0, fraction));
+      const legs: RedeemLeg[] = [];
+      for (const s of order) {
+        if (s === "USDC") continue;
+        const mint = mintBySymbol[s];
+        const asset = devnetAsset(s);
+        const uiAmt = tokenAmounts[s] ?? 0;
+        if (!mint || !asset || uiAmt <= 0) continue;
+        // Full exit floors the whole balance; a partial trim floors the fraction
+        // so we never try to redeem more than the wallet holds.
+        const assetQty = f >= 1 ? Math.round(uiAmt * 10 ** asset.decimals) : Math.floor(uiAmt * 10 ** asset.decimals * f);
+        if (assetQty <= 0) continue;
+        legs.push({ assetMint: mint, assetQty });
+      }
+      if (legs.length === 0) {
+        toast("Nothing to sell — you don't hold any of this mix yet.");
+        return;
+      }
+      setSelling(true);
+      try {
+        const { signatures } = await redeemFromBasketOnchain({
+          connection,
+          walletPublicKey: publicKey,
+          sendTransaction,
+          strategyCreator: OFFICIAL_CREATOR,
+          strategyId: followedBasketId,
+          usdcMint: new PublicKey(usdc.mint),
+          legs,
+          onProgress: ({ phase, step, steps }) => setTxStep({ action: "sell", phase, step, steps }),
+        });
+        setRefreshTick((t) => t + 1);
+        const last = signatures[signatures.length - 1] ?? "";
+        const label = f >= 1 ? "sold the mix" : `cashed out ${Math.round(f * 100)}%`;
+        setActivity((a) => [`You ${label} on-chain · ${legs.length} assets · ${last.slice(0, 8)}… · just now`, ...a]);
+        toast(f >= 1 ? "Sold the mix on-chain" : `Cashed out ${Math.round(f * 100)}% on-chain`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        toast(`Couldn't sell: ${msg}`);
+      } finally {
+        setSelling(false);
+        setTxStep(null);
+      }
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicKey, connection, sendTransaction, followedBasketId, tokenAmounts, order, mintBySymbol]);
+    [publicKey, connection, sendTransaction, followedBasketId, tokenAmounts, order, mintBySymbol],
+  );
 
   const donutSegs = useMemo(
     () =>
@@ -689,7 +709,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   // strategy's on-chain creator (its own basket) — official baskets are read-only.
   const canRunAgent = Boolean(publicKey) && Boolean(onchain?.exists) && onchain?.creator === publicKey?.toBase58();
   const makeHref = "/make?basket=" + (followedBasketId ?? "");
-  const stratHref = "/strategy/" + (followedBasketId ?? "");
+  const stratHref = "/dashboard/strategy";
   // __CTX_APPEND4__
 
   const value: DashboardValue = {
@@ -742,6 +762,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     fauceting,
     buying,
     selling,
+    txStep,
     getTestUsdc,
     buyBasket,
     sellBasket,

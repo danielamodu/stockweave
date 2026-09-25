@@ -5,10 +5,11 @@
 // Assistant pages; this page links out to them.
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Banknote, Check, Coins, Plus, Settings, ShoppingCart, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, Banknote, Check, Coins, Plus, Settings, ShoppingCart, SlidersHorizontal, X } from "lucide-react";
 import { useDashboard } from "@/components/dashboard/context";
 import { SetupFlow } from "@/components/dashboard/setup";
 import {
+  AnimatedUsd,
   BrowseView,
   Card,
   ChangeBadge,
@@ -20,16 +21,46 @@ import {
   fmtUsd,
 } from "@/components/dashboard/ui";
 import { ASSET_LABEL, pct, segTone } from "@/lib/present";
+import type { SendPhase } from "@/lib/onchain";
 import { AssetTile } from "@/components/asset-logo";
 import { Skeleton } from "@/components/skeleton";
 import { toast } from "@/components/toast";
 import { cn } from "@/lib/utils";
+
+// Sign → Broadcast → Confirm progress for an in-flight on-chain action, shown in
+// place of a quick-action button's label. Multi-leg buys/sells also show which
+// chunk (step/steps) is currently live.
+function PhaseSteps({ step }: { step: { phase: SendPhase; step: number; steps: number } }) {
+  const order: { key: SendPhase; label: string }[] = [
+    { key: "signing", label: "Sign" },
+    { key: "broadcasting", label: "Broadcast" },
+    { key: "confirming", label: "Confirm" },
+  ];
+  const at = order.findIndex((s) => s.key === step.phase);
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.06em]">
+      {order.map((s, i) => (
+        <span key={s.key} className="inline-flex items-center gap-1.5">
+          <span className={cn(i === at && "font-semibold", i > at && "opacity-40")}>{i < at ? "✓" : s.label}</span>
+          {i < order.length - 1 && <span className="opacity-30">·</span>}
+        </span>
+      ))}
+      {step.steps > 1 && (
+        <span className="ml-1 opacity-60">
+          {step.step}/{step.steps}
+        </span>
+      )}
+    </span>
+  );
+}
 
 export default function OverviewPage() {
   const d = useDashboard();
   // Which allocation slice is hovered — shared by the donut and its legend list
   // so hovering either cross-highlights the other.
   const [activeSeg, setActiveSeg] = useState<string | null>(null);
+  // Cash-out modal: null = closed, otherwise the chosen fraction (25/50/100%).
+  const [cashOut, setCashOut] = useState<number | null>(null);
 
   if (!d.following) return <BrowseView baskets={d.baskets} onFollow={d.onFollow} />;
 
@@ -51,7 +82,13 @@ export default function OverviewPage() {
   }
 
   const hasMix = Boolean(d.displayWeights && d.order.length > 0);
-  // __OVERVIEW_APPEND__
+  // Hovered-slice readout for the donut center: its marked value (USDC pinned).
+  const activeVal = activeSeg ? d.holdingsBySymbol?.[activeSeg] ?? null : null;
+  // What "Cash out" can redeem = everything the wallet holds except the USDC
+  // reserve. The modal's estimate scales this by the chosen fraction.
+  const nonCashValue = d.holdingsBySymbol
+    ? Object.entries(d.holdingsBySymbol).reduce((s, [sym, v]) => (sym === "USDC" ? s : s + (v ?? 0)), 0)
+    : 0;
 
   return (
     <div className="mx-auto max-w-[1120px]">
@@ -82,7 +119,7 @@ export default function OverviewPage() {
         <StatRow>
           <StatCell
             label="Your value"
-            value={fmtUsd(d.total)}
+            value={<AnimatedUsd value={d.total} />}
             sub={d.holdingsLoading ? "reading wallet…" : d.hasHoldings ? "marked live" : "no holdings yet — rules-only"}
           />
           <StatCell label="Today" value={<ChangeBadge value={d.change24h} size={16} className="text-[1.3rem]" />} sub="24h · weighted" />
@@ -110,14 +147,24 @@ export default function OverviewPage() {
               <div className="flex flex-col items-center gap-6 sm:flex-row sm:gap-8">
                 <div className="relative grid shrink-0 place-items-center" style={{ width: 132, height: 132 }}>
                   <Donut segments={d.donutSegs} size={132} stroke={14} activeKey={activeSeg} onHover={setActiveSeg} />
-                  <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
-                    <div>
-                      <div className="font-mono text-[1.5rem] leading-none tabular-nums">
-                        {d.holdingCount}
-                        <span className="text-[var(--color-faint)]">+1</span>
+                  <div className="pointer-events-none absolute inset-0 grid place-items-center px-2 text-center">
+                    {activeSeg ? (
+                      <div key={activeSeg} className="bp-fade">
+                        <div className="bp-mono-label text-[8px] text-[var(--color-accent)]">{ASSET_LABEL[activeSeg] ?? activeSeg}</div>
+                        <div className="mt-1 font-mono text-[1.15rem] leading-none tabular-nums">{pct(d.displayWeights?.[activeSeg] ?? 0)}%</div>
+                        {activeVal != null && (
+                          <div className="mt-1 font-mono text-[10px] tabular-nums text-[var(--color-muted)]">{fmtUsd(activeVal)}</div>
+                        )}
                       </div>
-                      <div className="bp-mono-label mt-1 text-[8px]">Assets</div>
-                    </div>
+                    ) : (
+                      <div>
+                        <div className="font-mono text-[1.5rem] leading-none tabular-nums">
+                          {d.holdingCount}
+                          <span className="text-[var(--color-faint)]">+1</span>
+                        </div>
+                        <div className="bp-mono-label mt-1 text-[8px]">Assets</div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <ul className="w-full flex-1 space-y-2.5">
@@ -265,9 +312,15 @@ export default function OverviewPage() {
                     className="bp-row flex w-full items-center gap-2.5 border border-[var(--color-grid)] px-3 py-2.5 text-left text-[13px] font-medium transition-colors hover:border-[var(--color-grid-strong)] disabled:opacity-50"
                   >
                     <Coins size={15} className="text-[var(--color-accent)]" />
-                    {d.fauceting ? "Minting test USDC…" : "Get test USDC"}
-                    {d.usdcBalance != null && d.usdcBalance > 0 && (
-                      <span className="ml-auto font-mono text-[11px] tabular-nums text-[var(--color-muted)]">{fmtUsd(d.usdcBalance)}</span>
+                    {d.txStep?.action === "faucet" ? (
+                      <PhaseSteps step={d.txStep} />
+                    ) : (
+                      <>
+                        {d.fauceting ? "Minting test USDC…" : "Get test USDC"}
+                        {d.usdcBalance != null && d.usdcBalance > 0 && (
+                          <span className="ml-auto font-mono text-[11px] tabular-nums text-[var(--color-muted)]">{fmtUsd(d.usdcBalance)}</span>
+                        )}
+                      </>
                     )}
                   </button>
                   <button
@@ -275,16 +328,17 @@ export default function OverviewPage() {
                     disabled={d.buying || !hasMix || !d.usdcBalance}
                     className="bp-row flex w-full items-center gap-2.5 border border-[var(--color-accent)] bg-[var(--color-accent)] px-3 py-2.5 text-left text-[13px] font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <ShoppingCart size={15} /> {d.buying ? "Buying on-chain…" : "Buy this mix"}
+                    <ShoppingCart size={15} />{" "}
+                    {d.txStep?.action === "buy" ? <PhaseSteps step={d.txStep} /> : d.buying ? "Buying on-chain…" : "Buy this mix"}
                   </button>
                   {d.hasAssetHoldings && (
                     <button
-                      onClick={d.sellBasket}
+                      onClick={() => setCashOut(100)}
                       disabled={d.selling}
                       className="bp-row flex w-full items-center gap-2.5 border border-[var(--color-grid-strong)] px-3 py-2.5 text-left text-[13px] font-medium transition-colors hover:border-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Banknote size={15} className="text-[var(--color-accent)]" />
-                      {d.selling ? "Selling on-chain…" : "Sell this mix"}
+                      {d.txStep?.action === "sell" ? <PhaseSteps step={d.txStep} /> : d.selling ? "Cashing out…" : "Cash out"}
                     </button>
                   )}
                 </>
@@ -312,6 +366,76 @@ export default function OverviewPage() {
           </Card>
         </div>
       </div>
+
+      {cashOut != null && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Cash out"
+          onClick={() => setCashOut(null)}
+        >
+          <div
+            className="bp-fade w-full max-w-[380px] border border-[var(--color-grid-strong)] bg-[var(--color-page)] p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="bp-mono-label text-[9px]">Cash out</div>
+                <h2 className="mt-1 text-[18px] font-medium">Sell back to test USDC</h2>
+              </div>
+              <button
+                onClick={() => setCashOut(null)}
+                aria-label="Close"
+                className="grid h-8 w-8 place-items-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-ink)]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="mt-3 text-[13px] leading-relaxed text-[var(--color-muted)]">
+              Redeems your basket assets on-chain and returns test USDC to your wallet. Settles at the strategy&apos;s
+              on-chain published price, so the final amount may differ slightly.
+            </p>
+            <div className="mt-4 flex gap-2">
+              {[25, 50, 100].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setCashOut(n)}
+                  className={cn(
+                    "flex-1 border px-3 py-2 font-mono text-[12px] tabular-nums transition-colors",
+                    cashOut === n
+                      ? "border-[var(--color-accent)] text-[var(--color-accent)]"
+                      : "border-[var(--color-grid)] text-[var(--color-muted)] hover:border-[var(--color-ink)] hover:text-[var(--color-ink)]",
+                  )}
+                >
+                  {n === 100 ? "All" : n + "%"}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 flex items-baseline justify-between border-t border-[var(--color-grid)] pt-4">
+              <span className="bp-mono-label text-[9px]">Est. USDC back</span>
+              <span className="font-mono text-[1.15rem] tabular-nums">≈ {fmtUsd(nonCashValue * (cashOut / 100))}</span>
+            </div>
+            <div className="mt-5 flex gap-2.5">
+              <button
+                onClick={() => {
+                  d.sellBasket(cashOut / 100);
+                  setCashOut(null);
+                }}
+                className="inline-flex h-10 flex-1 items-center justify-center gap-2 bg-[var(--color-accent)] px-5 text-[13px] font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)]"
+              >
+                Cash out {cashOut === 100 ? "everything" : cashOut + "%"}
+              </button>
+              <button
+                onClick={() => setCashOut(null)}
+                className="inline-flex h-10 items-center bg-[var(--color-soft)] px-5 text-[13px] font-medium text-[var(--color-ink)] transition-colors hover:bg-[var(--color-soft-hover)]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
