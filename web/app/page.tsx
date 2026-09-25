@@ -398,7 +398,7 @@ function SiteFooter() {
               Stockweave
             </div>
             <p className="mt-4 max-w-[34ch] text-[13px] leading-relaxed text-white/55">
-              A public, forkable strategy layer for tokenized stocks on Solana. Inspect it, simulate it,
+              A public, forkable strategy layer for tokenized pre-IPO PreStocks on Solana. Inspect it, simulate it,
               fork it, follow it — no opaque manager.
             </p>
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 font-mono text-[11px] uppercase tracking-[0.1em] text-white/40">
