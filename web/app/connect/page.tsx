@@ -14,9 +14,13 @@ import connectBg from "../../public/img/connect-bg.webp";
 
 export default function ConnectPage() {
   const router = useRouter();
-  const { wallet, ready, isConnecting, connect } = useSession();
+  const { wallet, ready, isConnecting, hadWallet, connect } = useSession();
   const cancelled = useWalletCancelled();
   const showCancelled = cancelled > 0 && !isConnecting;
+  // A returning visitor (wallet-adapter remembers a wallet here) most likely
+  // just needs to unlock it — autoConnect already tried and couldn't. Frame the
+  // screen as "reconnect / unlock" rather than a cold first-time "connect".
+  const returning = hadWallet && !showCancelled;
 
   // returning (already-connected) wallets skip straight to the dashboard
   useEffect(() => {
@@ -68,11 +72,12 @@ export default function ConnectPage() {
               <Wallet size={18} />
             </div>
             <h1 className="text-[26px] font-medium uppercase leading-tight tracking-[-0.03em]">
-              Connect your wallet
+              {returning ? "Welcome back" : "Connect your wallet"}
             </h1>
             <p className="mt-3 text-[14px] leading-relaxed text-[var(--color-muted)]">
-              Connect to follow the strategy and approve changes. You stay in control — nothing moves
-              without your OK, and you can disconnect anytime.
+              {returning
+                ? "Unlock your wallet to jump back into your strategy. You stay in control — nothing moves without your OK, and you can disconnect anytime."
+                : "Connect to follow the strategy and approve changes. You stay in control — nothing moves without your OK, and you can disconnect anytime."}
             </p>
 
             <button
@@ -82,8 +87,22 @@ export default function ConnectPage() {
               aria-busy={isConnecting}
               className="group relative mt-7 inline-flex h-11 w-full items-center justify-center gap-2 bg-[var(--color-accent)] text-[14px] font-medium text-white transition-colors duration-150 hover:bg-[var(--color-accent-hover)] disabled:cursor-wait disabled:opacity-80"
             >
-              {isConnecting ? "Connecting…" : showCancelled ? "Try again" : "Connect wallet"}
+              {isConnecting
+                ? returning
+                  ? "Reconnecting…"
+                  : "Connecting…"
+                : showCancelled
+                  ? "Try again"
+                  : returning
+                    ? "Reconnect wallet"
+                    : "Connect wallet"}
             </button>
+
+            {returning && !isConnecting && (
+              <p className="bp-fade mt-3 text-[12px] leading-relaxed text-[var(--color-muted)]">
+                Already connected here before — if nothing happens, open your wallet extension and unlock it, then tap Reconnect.
+              </p>
+            )}
 
             {showCancelled && (
               <p

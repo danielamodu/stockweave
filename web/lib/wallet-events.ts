@@ -22,3 +22,20 @@ export function useWalletCancelled(): number {
   }, []);
   return count;
 }
+
+// Did the CURRENT connection attempt start from a user tapping "Connect"? The
+// provider's onError swallows the same benign errors for a user cancel AND for a
+// silent autoConnect that fails because the wallet is just locked — but only the
+// first should raise "Connection cancelled" on the connect screen. connect()
+// marks this true; a successful connect (or the next error) clears it, so an
+// autoConnect failure on a locked wallet never shows the scary banner.
+let userInitiated = false;
+export function markUserConnecting() {
+  userInitiated = true;
+}
+export function clearUserConnecting() {
+  userInitiated = false;
+}
+export function wasUserInitiated(): boolean {
+  return userInitiated;
+}

@@ -31,10 +31,28 @@ type Basket = {
 };
 type Phase = "idle" | "creating" | "done" | "error";
 
+// The on-chain strategy id string is what The Weave shows as a from-scratch
+// strategy's name, so turn the user's title into a readable, valid id and append
+// a short unique suffix. Falls back to "custom-mix" for an empty title.
+function slugId(name: string): string {
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "custom-mix";
+  return `${base}-${Date.now().toString(36)}`.slice(0, 64);
+}
+
 function MakeYourOwnView() {
   const router = useRouter();
   const params = useSearchParams();
-  const basketId = params.get("basket") || "ai-infrastructure";
+  // `/make?basket=x` re-weights an official basket (mints a real fork of it).
+  // Bare `/make` is a from-scratch composer over every approved company (mints a
+  // standalone Community strategy that threads into The Weave on its own).
+  const basketParam = params.get("basket");
+  const freeMode = !basketParam;
+  const basketId = basketParam || "ai-infrastructure";
   const { wallet, ready, customMix, followedBasketId, setCustomMix } = useSession();
   const { connection } = useConnection();
   const { publicKey } = useWallet();
@@ -45,6 +63,8 @@ function MakeYourOwnView() {
   const [basket, setBasket] = useState<Basket | null>(null);
   const [labs, setLabs] = useState<Record<string, number>>({});
   const [mints, setMints] = useState<Record<string, string>>({});
+  const [assetsList, setAssetsList] = useState<{ symbol: string; mint: string }[]>([]);
+  const [name, setName] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [result, setResult] = useState<{ signature: string; strategy: string } | null>(null);
   const [err, setErr] = useState("");
@@ -53,8 +73,9 @@ function MakeYourOwnView() {
     if (ready && !wallet) router.replace("/connect");
   }, [ready, wallet, router]);
 
-  // load the basket being forked
+  // load the basket being forked (fork mode only — a from-scratch mix has none)
   useEffect(() => {
+    if (freeMode) return;
     let live = true;
     fetch("/api/baskets")
       .then((r) => r.json())
@@ -67,9 +88,10 @@ function MakeYourOwnView() {
     return () => {
       live = false;
     };
-  }, [basketId]);
+  }, [basketId, freeMode]);
 
-  // load the approved-asset registry → symbol→mint map (never fabricate a mint)
+  // load the approved-asset registry → symbol→mint map + ordered list (never
+  // fabricate a mint; the from-scratch composer offers exactly these companies)
   useEffect(() => {
     let live = true;
     fetch("/api/assets")
@@ -77,8 +99,13 @@ function MakeYourOwnView() {
       .then((d) => {
         if (!live) return;
         const m: Record<string, string> = {};
-        for (const a of d.assets || []) m[a.symbol] = a.mint;
+        const list: { symbol: string; mint: string }[] = [];
+        for (const a of d.assets || []) {
+          m[a.symbol] = a.mint;
+          list.push({ symbol: a.symbol, mint: a.mint });
+        }
         setMints(m);
+        setAssetsList(list);
       })
       .catch(() => {});
     return () => {
@@ -86,11 +113,30 @@ function MakeYourOwnView() {
     };
   }, []);
 
-  // non-cash constituents drive the sliders
-  const stocks = useMemo(() => (basket ? basket.constituents.filter((c) => c.symbol !== "USDC") : []), [basket]);
+  // Companies the from-scratch composer offers: every approved asset except cash.
+  const companies = useMemo(
+    () => assetsList.filter((a) => a.symbol !== "USDC").map((a) => ({ symbol: a.symbol, targetBps: 0 })),
+    [assetsList],
+  );
+  // non-cash constituents drive the sliders — the basket's in fork mode, all
+  // approved companies in from-scratch mode.
+  const stocks = useMemo(
+    () => (freeMode ? companies : basket ? basket.constituents.filter((c) => c.symbol !== "USDC") : []),
+    [freeMode, companies, basket],
+  );
 
-  // seed slider values: existing fork of THIS basket wins, else basket targets
+  // seed slider values. From-scratch: everything starts in cash (0 each) and the
+  // user dials each pick up. Fork: an existing fork of THIS basket wins, else the
+  // basket's own targets.
   useEffect(() => {
+    if (freeMode) {
+      setLabs((prev) => {
+        const seeded: Record<string, number> = {};
+        for (const c of companies) seeded[c.symbol] = prev[c.symbol] ?? 0;
+        return seeded;
+      });
+      return;
+    }
     if (!basket) return;
     const seeded: Record<string, number> = {};
     const useCustom = customMix && followedBasketId === basketId;
@@ -99,7 +145,7 @@ function MakeYourOwnView() {
     }
     setLabs(seeded);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basket]);
+  }, [basket, freeMode, companies]);
 
   const assigned = stocks.reduce((sum, c) => sum + (labs[c.symbol] ?? 0), 0);
   const cash = 100 - assigned;
@@ -133,6 +179,25 @@ function MakeYourOwnView() {
     setPhase("creating");
     setErr("");
     try {
+      if (freeMode) {
+        // From-scratch: mint a STANDALONE strategy (no parent). It lands in The
+        // Weave as a Community root — its own on-chain account, owned by the
+        // wallet, forkable by anyone. No official parent is invented.
+        const newId = slugId(name);
+        const res = await createBasketOnchain({
+          connection,
+          walletPublicKey: publicKey,
+          sendTransaction,
+          newId,
+          assets,
+          rules: { ...DEFAULT_NEW_RULES, reserveWeightBps: cash * 100 },
+          agent: AGENT_PUBKEY ?? undefined,
+        });
+        setResult(res);
+        setPhase("done");
+        toast("Your strategy is live on-chain");
+        return;
+      }
       const newId = `${basketId}-own-${Date.now().toString(36)}`.slice(0, 64);
       const res = await createBasketOnchain({
         connection,
@@ -142,6 +207,10 @@ function MakeYourOwnView() {
         assets,
         rules: { ...DEFAULT_NEW_RULES, reserveWeightBps: cash * 100 },
         agent: AGENT_PUBKEY ?? undefined,
+        // This mix is a re-weight of an official basket, so mint it as a real
+        // on-chain fork of that basket — it then threads back to its source in
+        // the lineage graph ("The Weave") instead of floating as an orphan.
+        parentBasketId: basketId,
       });
       const mix: Mix = { USDC: cash };
       for (const c of stocks) mix[c.symbol] = labs[c.symbol] ?? 0;
@@ -153,7 +222,7 @@ function MakeYourOwnView() {
       setErr(e instanceof Error ? e.message : String(e));
       setPhase("error");
     }
-  }, [publicKey, setVisible, stocks, labs, mints, basketId, connection, sendTransaction, cash, setCustomMix]);
+  }, [publicKey, setVisible, stocks, labs, mints, basketId, connection, sendTransaction, cash, setCustomMix, freeMode, name]);
 
   if (!ready || !wallet) return <div className="min-h-dvh bg-[var(--color-page)]" />;
   return (
@@ -163,21 +232,48 @@ function MakeYourOwnView() {
           <Link href="/dashboard" className="inline-flex items-center gap-2 text-[13px] uppercase tracking-[0.08em] no-underline text-[var(--color-ink)] transition-colors hover:text-[var(--color-accent)]">
             <ArrowLeft size={15} /> Back
           </Link>
-          {basket && <span className="bp-mono-label text-[10px]">Forking · {basket.name}</span>}
+          {freeMode ? (
+            <span className="bp-mono-label text-[10px]">New strategy · from scratch</span>
+          ) : (
+            basket && <span className="bp-mono-label text-[10px]">Forking · {basket.name}</span>
+          )}
         </div>
 
         <div className="mx-auto max-w-[620px] px-4 py-10 sm:px-6">
-          <div className="bp-mono-label mb-2 text-[10px]">Make your own version</div>
+          <div className="bp-mono-label mb-2 text-[10px]">{freeMode ? "Compose from scratch" : "Make your own version"}</div>
           <h1 className="text-[clamp(1.7rem,3.4vw,2.2rem)] font-medium uppercase leading-[1.06] tracking-[-0.03em]">
-            Set your own mix
+            {freeMode ? "Build your own strategy" : "Set your own mix"}
           </h1>
           <p className="mt-3 text-[14px] leading-relaxed text-[var(--color-muted)]">
-            {basket ? (
+            {freeMode ? (
+              <>Pick any of the companies below and choose how much goes into each. The rest stays in cash. When you create it, your wallet signs a real Devnet transaction that mints a standalone strategy account on-chain — a Community node anyone can inspect and fork in The Weave.</>
+            ) : basket ? (
               <>Start from {basket.name} and choose how much goes into each company. The rest stays in cash. When you create it, your wallet signs a real Devnet transaction that mints your own strategy account on-chain.</>
             ) : (
               <>Choose how much goes into each company. The rest stays in cash.</>
             )}
           </p>
+
+          {/* name your strategy (from-scratch only — the id shows in The Weave) */}
+          {freeMode && (
+            <div className="mt-8">
+              <label htmlFor="strat-name" className="bp-mono-label mb-2 block text-[10px]">
+                Name it
+              </label>
+              <input
+                id="strat-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={40}
+                placeholder="e.g. My AI bet"
+                className="w-full border border-[var(--color-grid)] bg-transparent px-3 py-2.5 text-[14px] text-[var(--color-ink)] outline-none transition-colors placeholder:text-[var(--color-faint)] focus:border-[var(--color-accent)]"
+              />
+              <p className="mt-1.5 font-mono text-[11px] text-[var(--color-faint)]">
+                Becomes this strategy&apos;s on-chain id — {slugId(name).replace(/-[a-z0-9]+$/, "")}…
+              </p>
+            </div>
+          )}
 
           {/* live preview bar */}
           <div className="mt-8 flex h-3 w-full overflow-hidden border border-[var(--color-grid)]">
@@ -190,7 +286,7 @@ function MakeYourOwnView() {
           {/* sliders */}
           <div className="mt-6 space-y-5">
             {stocks.length === 0 ? (
-              <div className="text-[13px] text-[var(--color-muted)]">Loading basket…</div>
+              <div className="text-[13px] text-[var(--color-muted)]">{freeMode ? "Loading companies…" : "Loading basket…"}</div>
             ) : (
               stocks.map((c, i) => (
                 <div key={c.symbol}>
@@ -240,7 +336,7 @@ function MakeYourOwnView() {
           {phase === "done" && result ? (
             <div className="mt-8 border border-[var(--color-accent)] bg-[color:var(--color-accent)]/[0.06] p-5">
               <div className="flex items-center gap-2 text-[14px] font-medium text-[var(--color-accent)]">
-                <Check size={16} /> Your basket is live on-chain.
+                <Check size={16} /> {freeMode ? "Your strategy is live on-chain." : "Your basket is live on-chain."}
               </div>
               <div className="mt-3 flex flex-col gap-1 font-mono text-[12px]">
                 <a href={EXPLORER(result.strategy)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[var(--color-accent)] no-underline hover:underline">
@@ -250,28 +346,56 @@ function MakeYourOwnView() {
                   transaction: {result.signature.slice(0, 6)}…{result.signature.slice(-6)} <ExternalLink size={12} />
                 </a>
               </div>
-              <Link href="/dashboard" className="mt-5 inline-flex h-11 items-center gap-2 bg-[var(--color-accent)] px-6 text-[14px] font-medium text-white no-underline transition-colors hover:bg-[var(--color-accent-hover)]">
-                Open dashboard
-              </Link>
+              {freeMode ? (
+                <>
+                  <p className="mt-4 text-[13px] leading-relaxed text-[var(--color-muted)]">
+                    It&apos;s now a Community node in The Weave — a real, forkable strategy account owned by your
+                    wallet. Anyone can inspect its rules and weights on-chain or branch their own version from it.
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-2.5">
+                    <Link href="/explore" className="inline-flex h-11 items-center gap-2 bg-[var(--color-accent)] px-6 text-[14px] font-medium text-white no-underline transition-colors hover:bg-[var(--color-accent-hover)]">
+                      See it in The Weave
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setPhase("idle");
+                        setResult(null);
+                        setName("");
+                        setLabs((l) => Object.fromEntries(Object.keys(l).map((k) => [k, 0])));
+                      }}
+                      className="inline-flex h-11 items-center bg-[var(--color-soft)] px-6 text-[14px] font-medium text-[var(--color-ink)] transition-colors hover:bg-[var(--color-soft-hover)]"
+                    >
+                      Build another
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <Link href="/dashboard" className="mt-5 inline-flex h-11 items-center gap-2 bg-[var(--color-accent)] px-6 text-[14px] font-medium text-white no-underline transition-colors hover:bg-[var(--color-accent-hover)]">
+                  Open dashboard
+                </Link>
+              )}
             </div>
           ) : (
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <button
                 onClick={create}
-                disabled={phase === "creating" || !cashOk || !mintsReady}
+                disabled={phase === "creating" || !cashOk || !mintsReady || assigned <= 0}
                 className={cn(
                   "inline-flex h-11 items-center gap-2 px-6 text-[14px] font-medium text-white transition-colors duration-150",
-                  phase !== "creating" && cashOk && mintsReady ? "bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)]" : "cursor-not-allowed bg-[var(--color-faint)]",
+                  phase !== "creating" && cashOk && mintsReady && assigned > 0 ? "bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)]" : "cursor-not-allowed bg-[var(--color-faint)]",
                 )}
               >
                 {phase === "creating" ? (
                   <><Loader2 size={15} className="animate-spin" /> Creating on-chain…</>
                 ) : !publicKey ? (
-                  <>Create my version (connect wallet)</>
+                  <>{freeMode ? "Create strategy" : "Create my version"} (connect wallet)</>
                 ) : (
-                  <>Create my version</>
+                  <>{freeMode ? "Create strategy" : "Create my version"}</>
                 )}
               </button>
+              {assigned <= 0 && cashOk && (
+                <span className="text-[13px] text-[var(--color-muted)]">Give at least one company a weight to continue.</span>
+              )}
               {!cashOk && <span className="text-[13px] text-[var(--color-danger)]">Leave at least {MIN_CASH}% in cash to continue.</span>}
               {phase === "error" && <span className="text-[13px] text-[var(--color-danger)]">Couldn&apos;t create: {err}</span>}
             </div>

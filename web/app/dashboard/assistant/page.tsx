@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { Check, X, ExternalLink } from "lucide-react";
 import { useDashboard, type AgentProposal } from "@/components/dashboard/context";
 import { Card, Label, DriftBar } from "@/components/dashboard/ui";
+import { OnchainLedger } from "@/components/onchain-ledger";
 import { EXPLORER, EXPLORER_TX, type OnchainRules } from "@/lib/onchain";
 import { ASSET_LABEL } from "@/lib/present";
 import { cn } from "@/lib/utils";
@@ -223,6 +224,24 @@ export default function AssistantPage() {
               <p className="text-[13px] text-[var(--color-muted)]">No changes yet. Approved tune-ups will show up here.</p>
             )}
           </Card>
+          {oc?.exists && (
+            <Card>
+              <Label
+                right={
+                  <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[var(--color-faint)]">
+                    Signed on-chain
+                  </span>
+                }
+              >
+                On-chain ledger
+              </Label>
+              <p className="mb-1 text-[13px] leading-relaxed text-[var(--color-muted)]">
+                The real, signed history of this strategy — read straight from Devnet, each row openable in Explorer.
+                What Activity shows optimistically, this confirms on-chain.
+              </p>
+              <OnchainLedger strategy={oc.strategy} limit={8} refreshKey={d.activity.length} className="mt-2" />
+            </Card>
+          )}
         </div>
         {/* __ASSISTANT_RAIL__ */}
         <div className="space-y-5">

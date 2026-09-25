@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Layers, Copy, SlidersHorizontal, Bot, Menu, X } from "lucide-react";
+import { LayoutGrid, Layers, Copy, SlidersHorizontal, Bot, Menu, X, Waypoints } from "lucide-react";
 import { DashboardProvider, useDashboard } from "@/components/dashboard/context";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
@@ -55,6 +55,7 @@ function NavSections({ onNavigate }: { onNavigate?: () => void }) {
       <div className="bp-mono-label px-3 pb-1 text-[8px]">Main</div>
       <NavItem icon={LayoutGrid} label="Overview" href="/dashboard" active={isActive("/dashboard")} onClick={onNavigate} />
       <NavItem icon={Layers} label="Holdings" href="/dashboard/holdings" active={isActive("/dashboard/holdings")} muted={!following} onClick={onNavigate} />
+      <NavItem icon={Waypoints} label="The Weave" href="/explore" active={isActive("/explore")} onClick={onNavigate} />
       <div className="bp-mono-label px-3 pb-1 pt-4 text-[8px]">Invest</div>
       <NavItem icon={Bot} label="Assistant" href="/dashboard/assistant" active={isActive("/dashboard/assistant")} muted={!following} onClick={onNavigate} />
       <NavItem icon={Copy} label="Strategy" href={stratHref} active={isActive(stratHref)} muted={!following} onClick={onNavigate} />

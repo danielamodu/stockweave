@@ -7,9 +7,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { clearUserConnecting, markUserConnecting } from "@/lib/wallet-events";
 
 const K_FOLLOW = "sw_followed_basket"; // stores the followed basket id
 const K_FORK = "sw_fork"; // stores { basketId, weights } for a custom version
+const K_WALLET_NAME = "walletName"; // wallet-adapter's remembered wallet (JSON)
 
 // A mix is symbol -> whole-percent weight (e.g. { OPENAI: 30, USDC: 10 }).
 export type Mix = Record<string, number>;
@@ -45,6 +47,10 @@ export function useSession() {
   const [mounted, setMounted] = useState(false);
   const [graceElapsed, setGraceElapsed] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
+  // Whether the wallet-adapter remembers a previously-selected wallet — i.e. the
+  // visitor has connected here before. Lets the connect screen say "reconnect /
+  // unlock" instead of a cold "connect", and drives the returning-user routing.
+  const [hadWallet, setHadWallet] = useState(false);
   const [followedBasketId, setFollowedBasketId] = useState<string | null>(null);
   const [fork, setForkState] = useState<Fork | null>(null);
 
@@ -52,6 +58,8 @@ export function useSession() {
     const sync = () => {
       setFollowedBasketId(read(K_FOLLOW));
       setForkState(readFork());
+      const remembered = read(K_WALLET_NAME);
+      setHadWallet(Boolean(remembered) && remembered !== "null" && remembered !== '""');
     };
     sync();
     setMounted(true);
@@ -73,7 +81,9 @@ export function useSession() {
     // Ceiling on how long we'll wait for autoConnect. A flaky standard wallet
     // (e.g. MetaMask's Solana shim) can hang `connecting` forever; without this
     // the wallet-gated pages would sit on a blank screen and never redirect.
-    const t = setTimeout(() => setGraceElapsed(true), 3500);
+    // Kept generous so a returning visitor unlocking their wallet (typing a
+    // Phantom password) isn't bounced to /connect mid-unlock.
+    const t = setTimeout(() => setGraceElapsed(true), 6000);
     window.addEventListener("storage", sync);
     return () => {
       window.removeEventListener("storage", sync);
@@ -102,12 +112,26 @@ export function useSession() {
       ? { id: forkForFollowed.onchainId, strategy: forkForFollowed.onchainStrategy ?? null }
       : null;
 
-  const connect = useCallback(() => setVisible(true), [setVisible]);
+  const connect = useCallback(() => {
+    markUserConnecting(); // so a later cancel (not a locked-wallet autoConnect) can show the hint
+    setVisible(true);
+  }, [setVisible]);
+
+  // Once a wallet actually connects, drop the "user is connecting" flag and
+  // remember that this visitor has a wallet — so a stray benign error afterwards
+  // can't retroactively raise "Connection cancelled".
+  useEffect(() => {
+    if (connected) {
+      clearUserConnecting();
+      setHadWallet(true);
+    }
+  }, [connected]);
 
   const disconnect = useCallback(() => {
     [K_FOLLOW, K_FORK].forEach((k) => window.localStorage.removeItem(k));
     setFollowedBasketId(null);
     setForkState(null);
+    setHadWallet(false);
     void walletDisconnect();
   }, [walletDisconnect]);
 
@@ -139,6 +163,7 @@ export function useSession() {
     wallet,
     walletShort,
     isConnecting,
+    hadWallet,
     followedBasketId,
     following,
     customMix,

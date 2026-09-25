@@ -9,6 +9,7 @@ import {
   Transaction,
   TransactionInstruction,
   SystemProgram,
+  type PartiallyDecodedInstruction,
 } from "@solana/web3.js";
 
 export const PROGRAM_ID = new PublicKey("EVx3g8ooCpshuemiNz3bt3vqoYapu7XjPab86BbnrgYN");
@@ -370,8 +371,13 @@ export async function createBasketOnchain(params: {
   assets: NewBasketAsset[];
   rules?: NewBasketRules;
   agent?: PublicKey;
+  // When set, the new basket is minted as an on-chain FORK of this official
+  // basket (fork_strategy records `parent` on-chain) instead of a standalone
+  // strategy (initialize_strategy leaves parent = default). This is what threads
+  // a custom mix back to its source basket in the lineage graph ("The Weave").
+  parentBasketId?: string;
 }): Promise<{ signature: string; strategy: string }> {
-  const { connection, walletPublicKey, sendTransaction, newId, assets } = params;
+  const { connection, walletPublicKey, sendTransaction, newId, assets, parentBasketId } = params;
   const rules = params.rules ?? DEFAULT_NEW_RULES;
   const agent = params.agent ?? walletPublicKey;
   if (!newId || newId.length > 64) throw new Error("Strategy id must be 1–64 characters");
@@ -382,15 +388,39 @@ export async function createBasketOnchain(params: {
   const rulesAcct = rulesPda(strategy);
   const sys = SystemProgram.programId;
 
-  const initIx = new TransactionInstruction({
-    programId: PROGRAM_ID,
-    keys: [
-      { pubkey: strategy, isSigner: false, isWritable: true },
-      { pubkey: walletPublicKey, isSigner: true, isWritable: true },
-      { pubkey: sys, isSigner: false, isWritable: false },
-    ],
-    data: Buffer.concat([Buffer.from(IX.initialize_strategy), borshString(newId)]),
-  });
+  // First instruction: either mint a standalone strategy (initialize_strategy) or
+  // fork an official basket (fork_strategy, which records the on-chain parent and
+  // copies the parent's rules). The rest of the tx — set_rules, set_assets, the
+  // agent grants — is identical either way, because set_rules uses init_if_needed
+  // (so re-setting the fork's just-copied rules to the custom mix just bumps them).
+  let createIx: TransactionInstruction;
+  if (parentBasketId) {
+    const parent = strategyPda(OFFICIAL_CREATOR, parentBasketId);
+    const parentRules = rulesPda(parent);
+    const forkRules = rulesPda(strategy);
+    createIx = new TransactionInstruction({
+      programId: PROGRAM_ID,
+      keys: [
+        { pubkey: parent, isSigner: false, isWritable: false },
+        { pubkey: parentRules, isSigner: false, isWritable: false },
+        { pubkey: strategy, isSigner: false, isWritable: true },
+        { pubkey: forkRules, isSigner: false, isWritable: true },
+        { pubkey: walletPublicKey, isSigner: true, isWritable: true },
+        { pubkey: sys, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.concat([Buffer.from(FORK_DISC), borshString(newId)]),
+    });
+  } else {
+    createIx = new TransactionInstruction({
+      programId: PROGRAM_ID,
+      keys: [
+        { pubkey: strategy, isSigner: false, isWritable: true },
+        { pubkey: walletPublicKey, isSigner: true, isWritable: true },
+        { pubkey: sys, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.concat([Buffer.from(IX.initialize_strategy), borshString(newId)]),
+    });
+  }
   const rulesIx = new TransactionInstruction({
     programId: PROGRAM_ID,
     keys: [
@@ -445,7 +475,7 @@ export async function createBasketOnchain(params: {
   if (!agent.equals(walletPublicKey)) permIxs.push(permIxFor(agent));
 
   const signature = await sendIxs(connection, walletPublicKey, sendTransaction, [
-    initIx,
+    createIx,
     rulesIx,
     ...assetIxs,
     ...permIxs,
@@ -1047,4 +1077,256 @@ export async function recordNavOnchain(params: {
   const { connection, walletPublicKey, sendTransaction, strategy, navU } = params;
   const ix = buildRecordNavIx(strategy, walletPublicKey, navU);
   return sendIxs(connection, walletPublicKey, sendTransaction, [ix]);
+}
+
+// --- The Weave: enumerate every strategy + its lineage ------------------------
+// A tiny self-contained base58 codec. web3.js bundles bs58 but doesn't re-export
+// it, and the browser `buffer` polyfill can't help here — so, in the same spirit
+// as the hand-rolled u64 codecs above, we carry our own. `encode` builds the
+// memcmp filter that fetches ONLY Strategy accounts (not every program account);
+// `decode` reads instruction data back out of a parsed transaction (below).
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+function base58Encode(bytes: Uint8Array): string {
+  const digits: number[] = [0];
+  for (let i = 0; i < bytes.length; i++) {
+    let carry = bytes[i];
+    for (let j = 0; j < digits.length; j++) {
+      carry += digits[j] << 8;
+      digits[j] = carry % 58;
+      carry = (carry / 58) | 0;
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = (carry / 58) | 0;
+    }
+  }
+  let out = "";
+  for (let k = 0; k < bytes.length && bytes[k] === 0; k++) out += "1";
+  for (let q = digits.length - 1; q >= 0; q--) out += B58[digits[q]];
+  return out;
+}
+function base58Decode(s: string): Uint8Array {
+  const bytes: number[] = [0];
+  for (let i = 0; i < s.length; i++) {
+    const val = B58.indexOf(s[i]);
+    if (val < 0) throw new Error("invalid base58");
+    let carry = val;
+    for (let j = 0; j < bytes.length; j++) {
+      carry += bytes[j] * 58;
+      bytes[j] = carry & 0xff;
+      carry >>= 8;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+  for (let k = 0; k < s.length && s[k] === "1"; k++) bytes.push(0);
+  return Uint8Array.from(bytes.reverse());
+}
+
+export const OFFICIAL_CREATOR_ADDR = OFFICIAL_CREATOR.toBase58();
+// __ONCHAIN_APPEND__
+
+// One strategy account as the network view needs it: who made it, what it forked
+// from, whether it's an official basket, and how many strategies fork FROM it.
+export type NetworkStrategy = {
+  address: string;
+  creator: string;
+  strategyId: string;
+  parent: string; // parent strategy account, or the system program when it's a root
+  status: number;
+  isFork: boolean;
+  isOfficial: boolean;
+  forkCount: number; // direct children that name this account as their parent
+};
+
+// Every Strategy account the program has ever created, across all creators —
+// official baskets and every fork of them. One getProgramAccounts call, filtered
+// server-side to just the Strategy discriminator so we don't drag back rules,
+// assets, prices or NAV rings. Fork counts are derived from the parent links.
+export async function listAllStrategies(connection: Connection): Promise<NetworkStrategy[]> {
+  const accts = await connection.getProgramAccounts(PROGRAM_ID, {
+    filters: [{ memcmp: { offset: 0, bytes: base58Encode(ACC.Strategy) } }],
+  });
+  const rows: NetworkStrategy[] = accts.map((a) => {
+    const s = decodeStrategyFull(Buffer.from(a.account.data));
+    const address = a.pubkey.toBase58();
+    const parent = s.parent.toBase58();
+    const creator = s.creator.toBase58();
+    return {
+      address,
+      creator,
+      strategyId: s.strategyId,
+      parent,
+      status: s.status,
+      isFork: parent !== SYSTEM_ADDR && parent !== address,
+      isOfficial: creator === OFFICIAL_CREATOR_ADDR,
+      forkCount: 0,
+    };
+  });
+  const childCount = new Map<string, number>();
+  for (const r of rows) if (r.isFork) childCount.set(r.parent, (childCount.get(r.parent) ?? 0) + 1);
+  for (const r of rows) r.forkCount = childCount.get(r.address) ?? 0;
+  return rows;
+}
+
+// A strategy plus its fork subtree, ready to render as a lineage. `roots` are the
+// strategies nobody in the set forked from (official baskets + any orphan whose
+// parent isn't among the accounts we read); everything else hangs off a parent.
+export type StrategyNode = NetworkStrategy & { children: StrategyNode[]; depth: number };
+
+export function buildLineage(rows: NetworkStrategy[]): StrategyNode[] {
+  const byAddress = new Map<string, NetworkStrategy>(rows.map((r) => [r.address, r]));
+  const childrenOf = new Map<string, NetworkStrategy[]>();
+  const roots: NetworkStrategy[] = [];
+  for (const r of rows) {
+    if (r.isFork && byAddress.has(r.parent)) {
+      const list = childrenOf.get(r.parent) ?? [];
+      list.push(r);
+      childrenOf.set(r.parent, list);
+    } else {
+      roots.push(r); // official basket, or a fork whose parent isn't in view
+    }
+  }
+  // official baskets first, then by most-forked, so the busiest lineage leads.
+  const rank = (a: NetworkStrategy, b: NetworkStrategy) =>
+    Number(b.isOfficial) - Number(a.isOfficial) || b.forkCount - a.forkCount;
+  const build = (r: NetworkStrategy, depth: number): StrategyNode => ({
+    ...r,
+    depth,
+    children: (childrenOf.get(r.address) ?? []).sort(rank).map((c) => build(c, depth + 1)),
+  });
+  return roots.sort(rank).map((r) => build(r, 0));
+}
+// __ONCHAIN_APPEND2__
+
+// --- Glass-box ledger: the real Devnet tx history of one strategy ------------
+// Every human action leaves a signed transaction that touches the strategy
+// account, so getSignaturesForAddress IS the audit trail — timestamped, ordered,
+// explorer-linkable, nothing we made up. We then best-effort classify each txn by
+// reading our own instruction discriminator out of the parsed transaction, so the
+// UI can say "Agent proposed" / "You approved" instead of a bare hash. If a txn
+// can't be fetched or parsed it degrades to a generic "on-chain action".
+export type LedgerAction =
+  | "create"
+  | "fork"
+  | "propose"
+  | "approve"
+  | "execute"
+  | "subscribe"
+  | "redeem"
+  | "price"
+  | "nav"
+  | "rules"
+  | "assets"
+  | "grant"
+  | "faucet"
+  | "other";
+
+export type LedgerEntry = {
+  signature: string;
+  blockTime: number | null; // unix seconds
+  err: boolean;
+  action: LedgerAction;
+};
+
+const IX_ACTION: [Uint8Array, LedgerAction][] = [
+  [IX.execute_rebalance, "execute"],
+  [IX.redeem, "redeem"],
+  [IX.subscribe, "subscribe"],
+  [IX.approve_rebalance, "approve"],
+  [IX.propose_rebalance, "propose"],
+  [IX.fork_strategy, "fork"],
+  [IX.initialize_strategy, "create"],
+  [IX.record_nav, "nav"],
+  [IX.set_asset_price, "price"],
+  [IX.set_rules, "rules"],
+  [IX.set_assets, "assets"],
+  [IX.set_agent_permission, "grant"],
+  [IX.faucet_usdc, "faucet"],
+];
+// When one transaction bundles several of our instructions (creating a basket
+// runs initialize + rules + assets + grant at once), report the headline one.
+const ACTION_RANK: Record<LedgerAction, number> = {
+  execute: 100, redeem: 90, subscribe: 80, approve: 70, propose: 60, fork: 55,
+  create: 50, nav: 40, price: 30, rules: 20, assets: 15, grant: 12, faucet: 10, other: 0,
+};
+
+function classifyOurIxs(ixs: PartiallyDecodedInstruction[]): LedgerAction {
+  let best: LedgerAction = "other";
+  for (const ix of ixs) {
+    let bytes: Uint8Array;
+    try {
+      bytes = base58Decode(ix.data);
+    } catch {
+      continue;
+    }
+    for (const [disc, action] of IX_ACTION) {
+      if (discEq(bytes, disc)) {
+        if (ACTION_RANK[action] > ACTION_RANK[best]) best = action;
+        break;
+      }
+    }
+  }
+  return best;
+}
+
+// Fetch one parsed transaction politely. The public Devnet RPC rate-limits
+// bursts (HTTP 429), so a transient failure gets one short retry before we give
+// up and let the row degrade — a 429 shouldn't cost us a label we could read.
+async function getParsedTxWithRetry(connection: Connection, signature: string) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const tx = await connection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
+      if (tx) return tx;
+      return null; // legitimately absent (pruned) — retrying won't help
+    } catch {
+      if (attempt < 1) await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+    }
+  }
+  return null;
+}
+
+// Map with bounded concurrency. Firing one getParsedTransaction per signature in
+// parallel IS the burst the RPC throttles, which is what made classifiable rows
+// fall back to a generic "on-chain action". A small pool trades a little latency
+// for a ledger that actually resolves its labels.
+async function mapPooled<T, R>(items: T[], size: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(size, items.length) }, async () => {
+    for (let i = next++; i < items.length; i = next++) {
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+export async function readStrategyActivity(
+  connection: Connection,
+  strategy: PublicKey,
+  limit = 10,
+): Promise<LedgerEntry[]> {
+  const sigs = await connection.getSignaturesForAddress(strategy, { limit });
+  if (sigs.length === 0) return [];
+  const pid = PROGRAM_ID.toBase58();
+  const txs = await mapPooled(sigs, 3, (s) => getParsedTxWithRetry(connection, s.signature));
+  return sigs.map((s, i) => {
+    const tx = txs[i];
+    let action: LedgerAction = "other";
+    if (tx) {
+      const ours = tx.transaction.message.instructions.filter(
+        (ix): ix is PartiallyDecodedInstruction => "data" in ix && ix.programId.toBase58() === pid,
+      );
+      action = classifyOurIxs(ours);
+    }
+    return {
+      signature: s.signature,
+      blockTime: s.blockTime ?? null,
+      err: s.err !== null,
+      action,
+    };
+  });
 }

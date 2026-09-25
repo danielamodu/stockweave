@@ -52,6 +52,7 @@ export default function Home() {
             </Link>
             <nav className="hidden border border-[var(--color-grid)] px-5 py-[15px] sm:block">
               <ul className="flex items-center gap-6 font-mono text-[10px] uppercase tracking-[0.17em] text-[var(--color-muted)]">
+                <li><Link href="/explore" className="no-underline transition-colors hover:text-[var(--color-ink)]">The Weave</Link></li>
                 <li><Link href="/strategy/ai-infrastructure" className="no-underline transition-colors hover:text-[var(--color-ink)]">Strategy</Link></li>
                 <li><Link href="/strategy/ai-infrastructure#rules" className="no-underline transition-colors hover:text-[var(--color-ink)]">Rules</Link></li>
                 <li><Link href="/strategy/ai-infrastructure#agent" className="no-underline transition-colors hover:text-[var(--color-ink)]">Agent</Link></li>
@@ -382,7 +383,7 @@ function CtaBand() {
 /* ---- Solid footer ---- */
 function SiteFooter() {
   const cols: [string, [string, string][]][] = [
-    ["Product", [["Strategy", "/strategy/ai-infrastructure"], ["Dashboard", "/dashboard"], ["Make your own", "/make"]]],
+    ["Product", [["The Weave", "/explore"], ["Strategy", "/strategy/ai-infrastructure"], ["Dashboard", "/dashboard"], ["Make your own", "/make"]]],
     ["Learn", [["How it works", "/#how"], ["Why it's different", "/#why"], ["FAQ", "/#faq"]]],
     ["Start", [["Connect wallet", "/connect"], ["Get started", "/dashboard"]]],
   ];

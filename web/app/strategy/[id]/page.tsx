@@ -12,6 +12,7 @@ import { AssetTile } from "@/components/asset-logo";
 import { Skeleton } from "@/components/skeleton";
 import { MainnetAssets } from "@/components/mainnet-assets";
 import { PreStocksLive } from "@/components/prestocks-live";
+import { OnchainLedger } from "@/components/onchain-ledger";
 import { DriftBar } from "@/components/dashboard/ui";
 import { segTone } from "@/lib/present";
 import { MarketStatus } from "@/components/market-status";
@@ -555,6 +556,20 @@ export function StrategyView({ basketId: basketIdProp, embedded = false }: { bas
               control over it, and the rule template is copied into your own account. Needs a little Devnet SOL for rent.
             </p>
           </section>
+
+          {/* on-chain ledger — the strategy's real, signed audit trail */}
+          {onchain?.exists && (
+            <section className="mt-10">
+              <Label>On-chain ledger</Label>
+              <div className="relative border border-[var(--color-grid)] p-5">
+                <p className="mb-1 text-[13px] leading-relaxed text-[var(--color-muted)]">
+                  Every action on this strategy is a signed transaction on Devnet — read straight from the chain,
+                  in order, each one openable in Explorer. Nothing here is logged by this page.
+                </p>
+                <OnchainLedger strategy={onchain.strategy} limit={8} className="mt-3" />
+              </div>
+            </section>
+          )}
 
           {/* page-state preview — a public-page demo affordance; hidden in-app */}
           {!embedded && (

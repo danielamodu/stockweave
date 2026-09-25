@@ -8,7 +8,7 @@ import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { WalletError } from "@solana/wallet-adapter-base";
 import { clusterApiUrl } from "@solana/web3.js";
-import { emitWalletCancel } from "@/lib/wallet-events";
+import { clearUserConnecting, emitWalletCancel, wasUserInitiated } from "@/lib/wallet-events";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
 // Errors the user causes on purpose (declining the popup, closing the picker)
@@ -51,9 +51,17 @@ export function SolanaWalletProvider({ children }: { children: React.ReactNode }
 
   const onError = useCallback((error: WalletError) => {
     if (BENIGN.has(error?.name)) {
-      emitWalletCancel(); // tell the connect screen the user backed out
+      // Only the user tapping "Connect" and then backing out should surface the
+      // "Connection cancelled" hint. A background autoConnect that fails because
+      // the wallet is simply locked throws the same benign error — stay quiet so
+      // a returning visitor isn't told they cancelled something they never did.
+      if (wasUserInitiated()) {
+        clearUserConnecting();
+        emitWalletCancel();
+      }
       return;
     }
+    clearUserConnecting();
     console.warn("[wallet]", error?.name, error?.message);
   }, []);
 
