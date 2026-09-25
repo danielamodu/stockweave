@@ -246,7 +246,7 @@ function MakeYourOwnView() {
           </h1>
           <p className="mt-3 text-[14px] leading-relaxed text-[var(--color-muted)]">
             {freeMode ? (
-              <>Pick any of the companies below and choose how much goes into each. The rest stays in cash. When you create it, your wallet signs a real Devnet transaction that mints a standalone strategy account on-chain — a Community node anyone can inspect and fork in The Weave.</>
+              <>This basket is yours to compose — pick any of the companies below and set how much goes into each. The rest stays in cash. When you create it, your wallet signs a real Devnet transaction that mints a standalone strategy account on-chain — a Community node anyone can inspect and fork in The Weave.</>
             ) : basket ? (
               <>Start from {basket.name} and choose how much goes into each company. The rest stays in cash. When you create it, your wallet signs a real Devnet transaction that mints your own strategy account on-chain.</>
             ) : (

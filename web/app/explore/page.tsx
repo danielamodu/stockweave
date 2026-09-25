@@ -283,19 +283,24 @@ export default function ExplorePage() {
               </a>{" "}
               (Devnet), filtered to Strategy accounts. Fork lineage is derived from each account&apos;s on-chain parent.
             </p>
-            <div className="flex flex-none flex-wrap gap-2.5">
-              <Link
-                href="/strategy/ai-infrastructure"
-                className="inline-flex h-10 items-center bg-[var(--color-soft)] px-4 text-[13px] font-medium text-[var(--color-ink)] no-underline transition-colors hover:bg-[var(--color-soft-hover)]"
-              >
-                Inspect a basket
-              </Link>
-              <Link
-                href="/make"
-                className="inline-flex h-10 items-center bg-[var(--color-accent)] px-4 text-[13px] font-medium text-white no-underline transition-colors hover:bg-[var(--color-accent-hover)]"
-              >
-                Make your own
-              </Link>
+            <div className="flex flex-none flex-col gap-2.5 sm:items-end">
+              <p className="font-mono text-[11px] leading-relaxed text-[var(--color-faint)]">
+                Not just the official baskets — build your own from any company.
+              </p>
+              <div className="flex flex-wrap gap-2.5">
+                <Link
+                  href="/strategy/ai-infrastructure"
+                  className="inline-flex h-10 items-center bg-[var(--color-soft)] px-4 text-[13px] font-medium text-[var(--color-ink)] no-underline transition-colors hover:bg-[var(--color-soft-hover)]"
+                >
+                  Inspect a basket
+                </Link>
+                <Link
+                  href="/make"
+                  className="inline-flex h-10 items-center bg-[var(--color-accent)] px-4 text-[13px] font-medium text-white no-underline transition-colors hover:bg-[var(--color-accent-hover)]"
+                >
+                  Build your own
+                </Link>
+              </div>
             </div>
           </div>
         </div>
