@@ -85,13 +85,15 @@ function Panel({
   label,
   children,
   className,
+  id,
 }: {
   label?: string;
   children: React.ReactNode;
   className?: string;
+  id?: string;
 }) {
   return (
-    <div className={cn("relative border border-[var(--color-grid)] p-5", className)}>
+    <div id={id} className={cn("relative border border-[var(--color-grid)] p-5", className)}>
       <GridPlus omit={["top", "left"]} className="left-0 top-0" />
       <GridPlus omit={["top", "right"]} className="left-full top-0" />
       <GridPlus omit={["bottom", "left"]} className="left-0 top-full" />
@@ -174,6 +176,18 @@ export function StrategyView({ basketId: basketIdProp, embedded = false }: { bas
       live = false;
     };
   }, [basketId, demo]);
+
+  // Panels mount after the async load, so the browser's initial hash scroll
+  // misses. Once data is in, honor #rules / #agent (and any other anchor).
+  useEffect(() => {
+    if (status !== "ok") return;
+    const id = decodeURIComponent(window.location.hash.slice(1));
+    if (!id) return;
+    const t = window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+    return () => window.clearTimeout(t);
+  }, [status]);
 
   const v = data?.valuation;
   const basketName = data?.basket?.name || "Strategy";
@@ -325,7 +339,7 @@ export function StrategyView({ basketId: basketIdProp, embedded = false }: { bas
 
           {/* rules + agent */}
           <section className="mt-6 grid gap-4 lg:grid-cols-2">
-            <Panel label="Rule set">
+            <Panel label="Rule set" id="rules" className="scroll-mt-24">
               <ul className="space-y-2 text-[14px] text-[var(--color-muted)]">
                 <li><span className="text-[var(--color-ink)]">Maximum single asset</span> — 35%</li>
                 <li><span className="text-[var(--color-ink)]">Minimum USDC reserve</span> — 10%</li>
@@ -334,8 +348,8 @@ export function StrategyView({ basketId: basketIdProp, embedded = false }: { bas
                 <li><span className="text-[var(--color-ink)]">Approval</span> — required for every action</li>
               </ul>
             </Panel>
-            <Panel label="Agent permissions" className="scroll-mt-24" >
-              <div id="agent" className="space-y-0">
+            <Panel label="Agent permissions" id="agent" className="scroll-mt-24">
+              <div className="space-y-0">
                 {[
                   ["READ", true],
                   ["PROPOSE", true],

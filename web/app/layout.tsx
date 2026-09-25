@@ -6,9 +6,12 @@ import { Toaster } from "@/components/toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "StockWeave — inspect, simulate, fork, follow",
+  title: {
+    default: "StockWeave — inspect, simulate, fork, follow",
+    template: "%s · StockWeave",
+  },
   description:
-    "A public, forkable strategy layer for tokenized stocks on Solana. Every rule, weight, and agent permission inspectable before you follow or fork.",
+    "A public, forkable strategy layer for tokenized pre-IPO PreStocks on Solana. Every rule, weight, and agent permission inspectable before you follow or fork.",
 };
 
 export default function RootLayout({

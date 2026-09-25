@@ -1,8 +1,8 @@
 // @preview-module stockweave-hero
 "use client";
 
-import { useEffect, useRef } from "react";
-import { ArrowUpRight, Check, ChevronDown } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUpRight, Check, ChevronDown, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { GridPlus, Hatch, Cta, CornerPluses } from "@/components/blueprint";
@@ -58,7 +58,8 @@ export default function Home() {
                 <li><Link href="/strategy/ai-infrastructure#agent" className="no-underline transition-colors hover:text-[var(--color-ink)]">Agent</Link></li>
               </ul>
             </nav>
-            <div className="flex justify-end">
+            <div className="flex items-center justify-end gap-2">
+              <MobileNav />
               <Link
                 href="/dashboard"
                 className="group relative inline-flex h-9 items-center gap-1.5 bg-[var(--color-accent)] px-4 text-[12px] font-medium text-white no-underline transition-colors duration-150 hover:bg-[var(--color-accent-hover)] sm:h-11 sm:text-[13px]"
@@ -423,7 +424,7 @@ function SiteFooter() {
         </div>
 
         <div className="mt-14 flex flex-col gap-4 border-t border-white/10 pt-6 text-[12px] text-white/45 md:flex-row md:items-center md:justify-between">
-          <span>© 2026 StockWeave · Demo · Devnet · no real funds</span>
+          <span>© {new Date().getFullYear()} StockWeave · Demo · Devnet · no real funds</span>
           <span className="max-w-[62ch] md:text-right">
             Not investment advice. PreStocks are SPV-backed economic exposure, not equity — no shares,
             voting, dividends, or guaranteed claim.
@@ -637,4 +638,97 @@ function DitherCanvas() {
   }, []);
 
   return <canvas ref={canvasRef} aria-hidden className="absolute inset-0 h-full w-full cursor-default" />;
+}
+
+/* ---- Mobile nav — below `sm` the header links are hidden, so this drawer is the
+   only way to reach The Weave / Strategy / Rules / Agent from the top of the page ---- */
+const NAV_LINKS: [string, string][] = [
+  ["The Weave", "/explore"],
+  ["Strategy", "/strategy/ai-infrastructure"],
+  ["Rules", "/strategy/ai-infrastructure#rules"],
+  ["Agent", "/strategy/ai-infrastructure#agent"],
+];
+
+function MobileNav() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Open menu"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+        className="grid h-9 w-9 shrink-0 place-items-center border border-[var(--color-grid)] text-[var(--color-ink)] transition-colors hover:border-[var(--color-ink)] sm:hidden"
+      >
+        <Menu size={18} />
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 sm:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+          <button
+            aria-label="Close menu"
+            onClick={() => setOpen(false)}
+            className="bp-backdrop absolute inset-0 h-full w-full cursor-default bg-black/30 backdrop-blur-sm"
+          />
+          <div className="bp-drawer absolute right-0 top-0 flex h-dvh w-[260px] max-w-[80vw] flex-col border-l border-[var(--color-grid)] bg-[var(--color-page)]">
+            <div className="flex items-center justify-between border-b border-[var(--color-grid)] px-5 py-4">
+              <Link
+                href="/"
+                onClick={() => setOpen(false)}
+                className="inline-flex items-center gap-2 text-[14px] uppercase tracking-[0.1em] no-underline text-[var(--color-ink)]"
+              >
+                <BrandMark size={20} />
+                Stockweave
+              </Link>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Close menu"
+                className="grid h-8 w-8 shrink-0 place-items-center text-[var(--color-muted)] transition-colors hover:text-[var(--color-ink)]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <nav className="flex-1 px-2 py-4">
+              <ul className="flex flex-col">
+                {NAV_LINKS.map(([label, href]) => (
+                  <li key={label}>
+                    <Link
+                      href={href}
+                      onClick={() => setOpen(false)}
+                      className="block px-3 py-3 font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--color-muted)] no-underline transition-colors hover:text-[var(--color-ink)]"
+                    >
+                      {label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            <div className="border-t border-[var(--color-grid)] p-4">
+              <Link
+                href="/dashboard"
+                onClick={() => setOpen(false)}
+                className="inline-flex h-11 w-full items-center justify-center gap-1.5 bg-[var(--color-accent)] text-[13px] font-medium text-white no-underline transition-colors hover:bg-[var(--color-accent-hover)]"
+              >
+                Get started <ArrowUpRight size={15} strokeWidth={2} />
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
