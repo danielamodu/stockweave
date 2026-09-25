@@ -61,7 +61,6 @@ function resolveRpc(): string {
 const RPC = resolveRpc();
 const HERMES = "https://hermes.pyth.network/v2/updates/price/latest";
 const NAV_MODEL_USD = 10000; // model portfolio size, matches the engine snapshot
-// __PROPOSE_APPEND__
 
 function loadAgentKeypair(): Keypair | null {
   const raw = process.env.AGENT_SECRET_KEY;
@@ -130,7 +129,6 @@ async function handle(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "BAD_REQUEST", message: "creator is not a valid public key." }, { status: 400 });
   }
-  // __PROPOSE_APPEND2__
   const connection = new Connection(RPC, "confirmed");
 
   // Read REAL on-chain state: rules + the agent's own grant.
@@ -179,28 +177,63 @@ async function handle(req: NextRequest) {
   } catch {
     live = {};
   }
+  const readAt = Math.floor(Date.now() / 1000); // when the agent read live prices
   const reserveBps = rules.reserveWeightBps;
   let totalValueBps = reserveBps; // cash held flat at $1
   const valueBps: Record<string, number> = {};
+  let pricedCount = 0;
   for (const a of assets) {
     const ch = live[a.symbol]?.priceChange24h;
-    const growth = 1 + (typeof ch === "number" ? ch : 0) / 100;
+    const priced = typeof ch === "number";
+    if (priced) pricedCount++;
+    const growth = 1 + (priced ? ch : 0) / 100;
     valueBps[a.symbol] = a.targetBps * growth;
     totalValueBps += valueBps[a.symbol];
   }
+  // The most-overweight asset (largest positive drift from target) is the pick.
   let pick = assets[0];
   let pickDrift = -Infinity;
   for (const a of assets) {
-    const currentBps = (10000 * valueBps[a.symbol]) / totalValueBps;
-    const drift = currentBps - a.targetBps;
+    const drift = (10000 * valueBps[a.symbol]) / totalValueBps - a.targetBps;
     if (drift > pickDrift) {
       pickDrift = drift;
       pick = a;
     }
   }
+  // Per-asset evidence the brief cites: the real 24h move, the resulting live
+  // weight, and the drift from the on-chain target. Sorted by drift so the driver
+  // reads first; an asset with no live price is flagged, never defaulted to 0%.
+  const evidence = assets
+    .map((a) => {
+      const ch = live[a.symbol]?.priceChange24h;
+      const priced = typeof ch === "number";
+      const currentBps = (10000 * valueBps[a.symbol]) / totalValueBps;
+      return {
+        symbol: a.symbol,
+        label: ASSET_LABEL[a.symbol] ?? a.symbol,
+        targetBps: a.targetBps,
+        change24h: priced ? ch : null,
+        currentBps: Math.round(currentBps),
+        driftBps: Math.round(currentBps - a.targetBps),
+        priced,
+        picked: a.symbol === pick.symbol,
+      };
+    })
+    .sort((x, y) => y.driftBps - x.driftBps);
+
   // The strategy's own configured rebalance band is the agent's discretion line.
   if (pickDrift < rules.rebalanceDriftBps) {
-    return NextResponse.json({ ok: true, proposal: null, reason: "WITHIN_DRIFT_BAND", maxDriftBps: Math.round(pickDrift) });
+    return NextResponse.json({
+      ok: true,
+      proposal: null,
+      reason: "WITHIN_DRIFT_BAND",
+      maxDriftBps: Math.round(pickDrift),
+      evidence,
+      pricedCount,
+      assetCount: assets.length,
+      priceSource: "JUPITER",
+      readAt,
+    });
   }
 
   // Fresh reference oracle (SOL/USD) — the program rejects a stale/wrong feed.
@@ -273,6 +306,12 @@ async function handle(req: NextRequest) {
     notional,
     maxDriftBps: Math.round(pickDrift),
     text,
+    evidence,
+    pricedCount,
+    assetCount: assets.length,
+    priceSource: "JUPITER",
+    readAt,
+    referencePublishTime: publishTime,
   });
 }
 

@@ -80,6 +80,7 @@ export type DashboardValue = {
   // agent proposal flow
   suggestion: { text: string } | null;
   proposal: AgentProposal | null;
+  review: AgentReview | null;
   canRunAgent: boolean;
   requestingProposal: boolean;
   approving: boolean;
@@ -106,6 +107,22 @@ export type DashboardValue = {
 
 // A REAL on-chain proposal returned by /api/agent/propose (agent-signed). The
 // connected wallet (strategy creator) then approves + executes it.
+//
+// The evidence[] is the analyst brief's grounding: the real per-asset 24h move
+// (live from Jupiter), each asset's resulting live weight, and its drift from the
+// on-chain target. It's what the recommendation is computed from — surfaced so
+// the reader can check the call against the same numbers the agent used.
+export type EvidenceRow = {
+  symbol: string;
+  label: string;
+  targetBps: number;
+  change24h: number | null; // null = no live price (held flat, flagged not faked)
+  currentBps: number;
+  driftBps: number;
+  priced: boolean;
+  picked: boolean; // the asset the agent proposes to trim
+};
+
 export type AgentProposal = {
   strategy: string;
   proposalId: number;
@@ -118,6 +135,25 @@ export type AgentProposal = {
   notional: number;
   text: string;
   signature: string;
+  // analyst-brief evidence + citations (all real values from the same request)
+  evidence?: EvidenceRow[];
+  pricedCount?: number;
+  assetCount?: number;
+  priceSource?: string;
+  readAt?: number; // unix s — when the agent read live prices
+  referencePublishTime?: number; // unix s — Pyth SOL/USD reference publish time
+};
+
+// The agent's read when it checks and finds the mix already within its drift
+// band: no signed proposal, but the same real per-asset evidence — surfaced so
+// "Ask the agent to review" always shows its work, not just flash a toast.
+export type AgentReview = {
+  evidence: EvidenceRow[];
+  pricedCount?: number;
+  assetCount?: number;
+  maxDriftBps: number;
+  priceSource?: string;
+  readAt?: number;
 };
 
 const Ctx = createContext<DashboardValue | null>(null);
@@ -127,7 +163,6 @@ export function useDashboard(): DashboardValue {
   if (!v) throw new Error("useDashboard must be used within <DashboardProvider>");
   return v;
 }
-// __CTX_APPEND__
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -148,6 +183,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [baskets, setBaskets] = useState<Basket[]>([]);
   // Real on-chain agent proposal (agent-signed) awaiting the creator's approval.
   const [proposal, setProposal] = useState<AgentProposal | null>(null);
+  // The agent's within-band read (no proposal) — its evidence still shows.
+  const [review, setReview] = useState<AgentReview | null>(null);
   const [requestingProposal, setRequestingProposal] = useState(false);
   const [approving, setApproving] = useState(false);
   // Connected wallet's REAL token balances for the followed basket (symbol → uiAmount).
@@ -212,6 +249,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     setApproved(false);
     setDismissed(false);
     setProposal(null);
+    setReview(null);
     // Drop the previous basket's balances so the setup gate re-reads cleanly for
     // the new pick (no stale "funded" flash while the new balances load).
     setTokenAmounts(null);
@@ -271,7 +309,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       live = false;
     };
   }, [following, followedBasketId, customOnchain?.id, wallet, connection]);
-  // __CTX_APPEND2__
 
   const onFollow = useCallback(
     (b: Basket) => {
@@ -372,7 +409,23 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (!d.ok || !d.signature) {
-        toast(d?.reason === "WITHIN_DRIFT_BAND" ? "Agent checked — the mix is within its drift band." : "Nothing to propose right now.");
+        if (d?.reason === "WITHIN_DRIFT_BAND") {
+          // No trim needed — but the agent still did the work. Keep its evidence
+          // so the page shows what it read instead of only flashing a toast.
+          setProposal(null);
+          setReview({
+            evidence: Array.isArray(d.evidence) ? d.evidence : [],
+            pricedCount: d.pricedCount,
+            assetCount: d.assetCount,
+            maxDriftBps: d.maxDriftBps ?? 0,
+            priceSource: d.priceSource,
+            readAt: d.readAt,
+          });
+          setActivity((a) => ["Agent reviewed the mix — within its drift band · just now", ...a]);
+          toast("Agent checked — the mix is within its drift band.");
+        } else {
+          toast("Nothing to propose right now.");
+        }
         return;
       }
       setProposal({
@@ -387,7 +440,14 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         notional: d.notional,
         text: d.text,
         signature: d.signature,
+        evidence: Array.isArray(d.evidence) ? d.evidence : undefined,
+        pricedCount: d.pricedCount,
+        assetCount: d.assetCount,
+        priceSource: d.priceSource,
+        readAt: d.readAt,
+        referencePublishTime: d.referencePublishTime,
       });
+      setReview(null);
       setApproved(false);
       setDismissed(false);
       setActivity((a) => [`Agent proposed a tune-up on-chain · ${String(d.signature).slice(0, 8)}… · just now`, ...a]);
@@ -710,7 +770,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const canRunAgent = Boolean(publicKey) && Boolean(onchain?.exists) && onchain?.creator === publicKey?.toBase58();
   const makeHref = "/make?basket=" + (followedBasketId ?? "");
   const stratHref = "/dashboard/strategy";
-  // __CTX_APPEND4__
 
   const value: DashboardValue = {
     ready,
@@ -747,6 +806,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     holdingsBySymbol,
     suggestion,
     proposal,
+    review,
     canRunAgent,
     requestingProposal,
     approving,

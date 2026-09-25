@@ -6,7 +6,7 @@
 import { useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Check, X, ExternalLink } from "lucide-react";
-import { useDashboard, type AgentProposal } from "@/components/dashboard/context";
+import { useDashboard, type AgentProposal, type AgentReview, type EvidenceRow } from "@/components/dashboard/context";
 import { Card, Label, DriftBar } from "@/components/dashboard/ui";
 import { OnchainLedger } from "@/components/onchain-ledger";
 import { EXPLORER, EXPLORER_TX, type OnchainRules } from "@/lib/onchain";
@@ -59,6 +59,105 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+// Compact "moments ago" / "Nm ago" from a unix-seconds timestamp — dates the live
+// prices and reference oracle the brief cites, so the evidence isn't timeless.
+function agoText(sec?: number): string {
+  if (!sec) return "just now";
+  const d = Math.max(0, Math.floor(Date.now() / 1000 - sec));
+  if (d < 45) return "moments ago";
+  if (d < 90) return "1m ago";
+  const m = Math.floor(d / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  return `${h}h ago`;
+}
+
+// One asset's row in the evidence table: real 24h move, live weight → target, and
+// the drift between them. The pick (most overweight → the trim) is accented.
+function EvidenceRowView({ e }: { e: EvidenceRow }) {
+  const up = (e.change24h ?? 0) >= 0;
+  return (
+    <tr className={cn("border-t border-[var(--color-grid)]", e.picked && "bg-[color:var(--color-accent)]/[0.06]")}>
+      <td className="px-4 py-2.5">
+        <span className="inline-flex items-center gap-2">
+          {e.picked && <span className="h-1.5 w-1.5 shrink-0 bg-[var(--color-accent)]" aria-hidden />}
+          <span className={cn("font-medium", e.picked && "text-[var(--color-accent)]")}>{e.label}</span>
+          {e.picked && <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[var(--color-accent)]">trim</span>}
+        </span>
+      </td>
+      <td className="px-2 py-2.5 text-right font-mono tabular-nums">
+        {e.priced ? (
+          <span className={up ? "text-[var(--color-up)]" : "text-[var(--color-down)]"}>
+            {up ? "+" : ""}
+            {e.change24h!.toFixed(1)}%
+          </span>
+        ) : (
+          <span className="text-[var(--color-faint)]">n/a</span>
+        )}
+      </td>
+      <td className="px-2 py-2.5 text-right font-mono tabular-nums text-[var(--color-muted)]">
+        {(e.currentBps / 100).toFixed(0)}→{(e.targetBps / 100).toFixed(0)}%
+      </td>
+      <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+        <span className={e.driftBps > 0 ? "text-[var(--color-ink)]" : "text-[var(--color-faint)]"}>
+          {e.driftBps > 0 ? "+" : ""}
+          {(e.driftBps / 100).toFixed(1)}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+// The evidence the recommendation is built from: every asset's real 24h move
+// (live, Jupiter), its resulting live weight vs its on-chain target, and the
+// drift between them — the top row is the proposed trim. Anyone can check the
+// call against the same numbers the agent used; the footer dates and sources
+// them, and an asset with no live price is flagged rather than shown as 0%.
+function EvidenceTable({
+  rows,
+  readAt,
+  referencePublishTime,
+  pricedCount,
+  assetCount,
+}: {
+  rows: EvidenceRow[];
+  readAt?: number;
+  referencePublishTime?: number;
+  pricedCount?: number;
+  assetCount?: number;
+}) {
+  if (rows.length === 0) return null;
+  const unpriced = (assetCount ?? rows.length) - (pricedCount ?? rows.length);
+  return (
+    <div className="mt-4 border border-[var(--color-grid)]">
+      <div className="flex items-center justify-between border-b border-[var(--color-grid)] px-4 py-2.5">
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-faint)]">What the agent read</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-faint)]">last 24h · live</span>
+      </div>
+      <table className="w-full border-collapse text-[13px]">
+        <thead>
+          <tr className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--color-faint)]">
+            <th className="px-4 py-2 text-left font-normal">Asset</th>
+            <th className="px-2 py-2 text-right font-normal">24h</th>
+            <th className="px-2 py-2 text-right font-normal">Now→target</th>
+            <th className="px-4 py-2 text-right font-normal">Drift</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((e) => (
+            <EvidenceRowView key={e.symbol} e={e} />
+          ))}
+        </tbody>
+      </table>
+      <div className="border-t border-[var(--color-grid)] px-4 py-2.5 font-mono text-[10px] leading-relaxed text-[var(--color-faint)]">
+        Live 24h returns from Jupiter, read {agoText(readAt)}. Drift is each asset&apos;s live weight minus its on-chain target.
+        {referencePublishTime != null && ` Reference SOL/USD via Pyth, published ${agoText(referencePublishTime)}.`}
+        {unpriced > 0 && ` ${unpriced} asset${unpriced > 1 ? "s" : ""} had no live price and ${unpriced > 1 ? "were" : "was"} held flat.`}
+      </div>
+    </div>
+  );
+}
+
 // The plain-numbers story behind a real on-chain proposal: what drifted, the
 // proposed trim, the on-chain guardrails it stays inside, and the hard line —
 // the agent can propose but never execute. Every figure is a real value from
@@ -86,6 +185,13 @@ function ProposalBreakdown({ p, rules }: { p: AgentProposal; rules?: OnchainRule
           past the tick is the drift — the agent proposes trimming it back to target
         </div>
       </div>
+      <EvidenceTable
+        rows={p.evidence ?? []}
+        readAt={p.readAt}
+        referencePublishTime={p.referencePublishTime}
+        pricedCount={p.pricedCount}
+        assetCount={p.assetCount}
+      />
       <dl className="mt-4 border-t border-[var(--color-grid)]">
         <Fact label="Drifted">
           {name} · +{(p.maxDriftBps / 100).toFixed(1)} pts over its {bpsPct(p.newTargetWeightBps)} target
@@ -107,6 +213,48 @@ function ProposalBreakdown({ p, rules }: { p: AgentProposal; rules?: OnchainRule
   );
 }
 
+// The agent's within-band readout: it checked, nothing drifted past the band, so
+// there's no signed proposal — but the same real evidence still shows, so "review"
+// always means something you can inspect. A re-check button re-runs it live.
+function AgentReviewView({
+  review,
+  rules,
+  onRecheck,
+  rechecking,
+}: {
+  review: AgentReview;
+  rules?: OnchainRules | null;
+  onRecheck: () => void;
+  rechecking: boolean;
+}) {
+  const band = rules?.rebalanceDriftBps;
+  return (
+    <>
+      <div className="flex items-center gap-2 text-[14px] font-medium text-[var(--color-accent)]">
+        <Check size={16} /> Reviewed — your mix is within its drift band.
+      </div>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-muted)]">
+        The most-drifted asset is +{(review.maxDriftBps / 100).toFixed(1)} pts from its target
+        {band != null && <> · inside the {(band / 100).toFixed(0)}-pt rebalance band</>}. No trim needed yet — here&apos;s
+        exactly what the agent read.
+      </p>
+      <EvidenceTable
+        rows={review.evidence}
+        readAt={review.readAt}
+        pricedCount={review.pricedCount}
+        assetCount={review.assetCount}
+      />
+      <button
+        onClick={onRecheck}
+        disabled={rechecking}
+        className={cn("mt-5", SKIP_CLS, rechecking && "cursor-not-allowed opacity-70")}
+      >
+        {rechecking ? "Agent is checking…" : "Check again"}
+      </button>
+    </>
+  );
+}
+
 export default function AssistantPage() {
   const d = useDashboard();
   const router = useRouter();
@@ -124,7 +272,6 @@ export default function AssistantPage() {
   const allowed = oc?.agentAllowedActions ?? perm?.allowedActions ?? READ | PROPOSE;
   const perAction = oc?.rules?.maxTradeNotional ?? perm?.maxNotionalPerAction ?? 50;
   const perDay = oc?.rules?.maxDailyNotional ?? perm?.maxDailyNotional ?? 200;
-  // __ASSISTANT_APPEND__
 
   return (
     <div className="mx-auto max-w-[1120px]">
@@ -142,7 +289,7 @@ export default function AssistantPage() {
           <Card>
             <Label>Current proposal</Label>
             <div
-              key={d.approved ? "done" : d.proposal ? "prop" : d.canRunAgent ? "ask" : d.suggestion ? "todo" : "clear"}
+              key={d.approved ? "done" : d.proposal ? "prop" : d.canRunAgent ? (d.review ? "review" : "ask") : d.suggestion ? "todo" : "clear"}
               className="bp-fade"
               aria-live="polite"
             >
@@ -176,19 +323,31 @@ export default function AssistantPage() {
                   </p>
                 </>
               ) : d.canRunAgent ? (
-                // The connected wallet owns this basket on-chain → ask the real backend agent to check drift.
-                <>
-                  <p className="text-[14px] leading-relaxed text-[var(--color-muted)]">
-                    Ask the agent to read this basket&apos;s on-chain targets and the last 24h of live prices. If the mix has drifted past its band, it signs a real proposal here for you to approve.
-                  </p>
-                  <button
-                    onClick={d.requestProposal}
-                    disabled={d.requestingProposal}
-                    className={cn("mt-4", APPROVE_CLS, d.requestingProposal && "cursor-not-allowed opacity-70")}
-                  >
-                    {d.requestingProposal ? "Agent is checking…" : "Ask the agent to review"}
-                  </button>
-                </>
+                d.review ? (
+                  // The agent checked and found the mix within its drift band: no signed
+                  // proposal, but its real evidence still shows — a review always means
+                  // something you can inspect, not just a toast.
+                  <AgentReviewView
+                    review={d.review}
+                    rules={oc?.rules}
+                    onRecheck={d.requestProposal}
+                    rechecking={d.requestingProposal}
+                  />
+                ) : (
+                  // The connected wallet owns this basket on-chain → ask the real backend agent to check drift.
+                  <>
+                    <p className="text-[14px] leading-relaxed text-[var(--color-muted)]">
+                      Ask the agent to read this basket&apos;s on-chain targets and the last 24h of live prices. If the mix has drifted past its band, it signs a real proposal here for you to approve.
+                    </p>
+                    <button
+                      onClick={d.requestProposal}
+                      disabled={d.requestingProposal}
+                      className={cn("mt-4", APPROVE_CLS, d.requestingProposal && "cursor-not-allowed opacity-70")}
+                    >
+                      {d.requestingProposal ? "Agent is checking…" : "Ask the agent to review"}
+                    </button>
+                  </>
+                )
               ) : d.suggestion ? (
                 // Read-only basket (official / preview): show the engine's model suggestion; approving is a local acknowledgement.
                 <>
@@ -243,7 +402,6 @@ export default function AssistantPage() {
             </Card>
           )}
         </div>
-        {/* __ASSISTANT_RAIL__ */}
         <div className="space-y-5">
           <Card>
             <Label
